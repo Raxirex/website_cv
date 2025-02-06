@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cyber CV</title>
+  <!-- Include Three.js for the background shader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    /* ----------------------- Global Styles ----------------------- */
+    body {
+      margin: 0;
+      padding: 0;
+      background: black;
+      color: white;
+      font-family: monospace;
+      overflow-x: hidden;
+    }
+    canvas { display: block; }
+
+    /* ----------------------- Header ----------------------- */
+    #header {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 24px;
+      letter-spacing: 2px;
+      z-index: 20;
+    }
+
+    /* ----------------------- Sphere Container ----------------------- */
+
+    #sphere-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 600px;
+      height: 600px;
+      transform: translate(-50%, -50%);
+      perspective: 800px;
+      cursor: grab;
+      z-index: 10;
+
+    }
+
+    /* ----------------------- Sphere Points ----------------------- */
+    .sphere-point {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      user-select: none;
+      pointer-events: none;
+    }
+
+    /* ----------------------- CV Content ----------------------- */
+    #cv-content {
+      position: relative;
+      z-index: 1;
+      padding: 40px 20px;
+      margin-top: 800px; /* Adjust when needed */
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    #cv-content section { margin-bottom: 40px; }
+    #cv-content h1, #cv-content h2 {
+      border: none;
+      padding-bottom: 5px;
+    }
+    #cv-content ul { list-style: none; padding: 0; }
+    #cv-content li { margin-bottom: 10px; }
+
+    /* ----------------------- Cyberpunk Name ----------------------- */
+    .cyber-name {
+      color: #fff;
+      cursor: pointer;
+      border-bottom: none !important;
+    }
+    @keyframes twitch {
+      0%   { transform: translate(0, 0) skew(0deg, 0deg); text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff; }
+      10%  { transform: translate(-2px, 1px) skew(1deg, -1deg); text-shadow: 3px 3px #ff00ff, -3px -3px #00ffff; }
+      20%  { transform: translate(2px, -1px) skew(-1deg, 1deg); text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff; }
+      30%  { transform: translate(-1px, 2px) skew(2deg, -2deg); text-shadow: 3px 3px #ff00ff, -3px -3px #00ffff; }
+      40%  { transform: translate(1px, -2px) skew(-2deg, 2deg); text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff; }
+      50%  { transform: translate(0, 0) skew(0deg, 0deg); text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff; }
+      100% { transform: translate(0, 0) skew(0deg, 0deg); text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff; }
+    }
+    .twitch { animation: twitch 1s; }
+  </style>
+</head>
+<body>
+  <!-- ----------------------- Header ----------------------- -->
+  <div id="header">>>> Curriculum Vitae</div>
+
+  <!-- ----------------------- Sphere Container ----------------------- -->
+  <div id="sphere-container"></div>
+
+  <!-- ----------------------- CV Content ----------------------- -->
+  <div id="cv-content">
+    <section id="profile">
+      <h1 class="cyber-name">"Nani gigantum humeris insidentes"</h1>
+      <h1 class="cyber-name">>>> Person</h1>
+      <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce in libero at urna varius laoreet. Cras in sapien nec nunc dignissim cursus ut ac magna. Vivamus convallis nulla sit amet est cursus, a luctus neque convallis.
+      </p>
+    </section>
+    <section id="experience">
+      <h2>Experience</h2>
+      <ul>
+        <li>
+          <strong>University</strong> - Company A (2024 - Present)<br>
+          Mechanical Engineering BSc.
+        </li>
+        <li>
+          <strong>Head &amp; University</strong> - Company B (2022 - 2023)<br>
+          Mechanical Engineering BSc.
+        </li>
+      </ul>
+    </section>
+    <section id="education">
+      <h2>Education</h2>
+      <ul>
+        <li>
+          <strong>Bachelor's Degree</strong> - University (2024 - Present)<br>
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+        </li>
+        <li>
+          <strong>Bachelor's Degree (Transferred)</strong> - University (2022 - 2023)
+        </li>
+      </ul>
+    </section>
+    <section id="skills">
+      <h2>Skills</h2>
+      <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin lacinia, massa ac facilisis cursus, lacus lorem gravida metus, non malesuada erat sapien sed ipsum.
+      </p>
+    </section>
+    <section id="contact">
+      <h2>Contact</h2>
+      <p>
+        Email: john.doe@example.com<br>
+        Phone: +1234567890<br>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+      </p>
+    </section>
+  </div>
+
+  <script>
+    /***** SPHERE CODE: Perspective Projection, Auto‑Variation, Deceleration, & Pointer Interactivity *****/
+    (function(){
+      // Base parameters for the sphere.
+      let numberSize = 16;      // Initial symbol font size.
+      let sphereRadius = 200;   // Initial sphere radius.
+      const amount = 63;        // Fixed number of symbols.
+      let rotationX = 0;        // Rotation angle around X-axis.
+      let rotationY = 0;        // Rotation angle around Y-axis.
+      let points = [];          // Array to store each sphere point's data.
+      const container = document.getElementById('sphere-container');
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));  // Golden angle for uniform distribution.
+
+      // Auto-rotation speeds start high and decay over time.
+      let autoRotateSpeedX = 0.01;
+      let autoRotateSpeedY = 0.01;
+
+      // Record the initial time.
+      const initialTime = Date.now();
+
+      // Global array of active beam sources.
+      // Each beam source is an object: { index, startTime, spreadCount, connections }
+      let beamSources = [];
+
+      /***** Helper Functions *****/
+      function getUniqueSymbolPool() {
+        const digits = ["0","1","2","3","4","5","6","7","8","9"];
+        const greekChars = ["α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "φ", "χ", "ψ", "ω"];
+        const chineseChars = ["力", "智"];
+        const japaneseFire = ["火"];
+        const latinUpper = [];
+        for (let i = 65; i <= 90; i++){
+          latinUpper.push(String.fromCharCode(i));
+        }
+        return [].concat(digits, greekChars, chineseChars, japaneseFire, latinUpper);
+      }
+      
+      function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+      }
+      
+      /***** Sphere Generation *****/
+      function createPoints(){
+        container.innerHTML = '';  // Clear previous content.
+        createBeamsCanvas();         // Create the overlay canvas for beams.
+        points = [];
+        let pool = shuffle(getUniqueSymbolPool());
+        for (let i = 0; i < amount; i++){
+          const point = document.createElement('div');
+          point.className = 'sphere-point';
+          point.innerText = pool[i % pool.length];
+          // Mark each point as not yet infected.
+          point.infected = false;
+          container.appendChild(point);
+          points.push({ element: point, ox: 0, oy: 0, oz: 0, infected: false });
+        }
+        calculateSpherePoints();
+      }
+      
+      // Calculate 3D coordinates for each point using the Fibonacci sphere algorithm.
+      function calculateSpherePoints(){
+        for (let i = 0; i < points.length; i++){
+          const y = 1 - (i / (points.length - 1)) * 2;  // y from 1 to -1.
+          const radius = Math.sqrt(1 - y * y);
+          const theta = goldenAngle * i;
+          const x = Math.cos(theta) * radius;
+          const z = Math.sin(theta) * radius;
+          points[i].ox = x;
+          points[i].oy = y;
+          points[i].oz = z;
+        }
+      }
+      
+      // Update each point's 2D position using perspective projection.
+      function updatePoints(){
+        const centerX = container.clientWidth / 2;
+        const centerY = container.clientHeight / 2;
+        const sinX = Math.sin(rotationX);
+        const cosX = Math.cos(rotationX);
+        const sinY = Math.sin(rotationY);
+        const cosY = Math.cos(rotationY);
+        points.forEach(p => {
+          const x = p.ox, y = p.oy, z = p.oz;
+          const y1 = y * cosX - z * sinX;
+          const z1 = y * sinX + z * cosX;
+          const x1 = x * cosY + z1 * sinY;
+          const z2 = -x * sinY + z1 * cosY;
+          const perspective = 2;
+          const scale = perspective / (perspective - z2);
+          const screenX = centerX + x1 * sphereRadius * scale;
+          const screenY = centerY + y1 * sphereRadius * scale;
+          p.sx = screenX;
+          p.sy = screenY;
+          p.element.style.left = screenX + 'px';
+          p.element.style.top = screenY + 'px';
+          p.element.style.opacity = scale;
+          p.element.style.fontSize = numberSize + 'px';
+        });
+      }
+      
+      /***** BEAMS OVERLAY *****/
+      let beamsCanvas, beamsCtx;
+      function createBeamsCanvas(){
+        let existing = document.getElementById('beams-overlay');
+        if(existing) { existing.remove(); }
+        beamsCanvas = document.createElement('canvas');
+        beamsCanvas.id = "beams-overlay";
+        const dpr = window.devicePixelRatio || 1;
+        beamsCanvas.width = container.clientWidth * dpr;
+        beamsCanvas.height = container.clientHeight * dpr;
+        beamsCanvas.style.width = container.clientWidth + "px";
+        beamsCanvas.style.height = container.clientHeight + "px";
+        beamsCanvas.style.position = "absolute";
+        beamsCanvas.style.top = "0";
+        beamsCanvas.style.left = "0";
+        beamsCanvas.style.pointerEvents = "none";
+        container.appendChild(beamsCanvas);
+        beamsCtx = beamsCanvas.getContext("2d");
+        beamsCtx.scale(dpr, dpr);
+      }
+      
+      // Draw beams for a given beam source.
+      // Each beam source now has an array "connections" holding indices of points it has infected.
+      function drawBeamsForSource(source) {
+        if (!beamsCtx) return;
+        beamsCtx.strokeStyle = "rgba(255,255,255,1.0)";
+        beamsCtx.lineWidth = 1;
+        const sourcePoint = points[source.index];
+        if (!sourcePoint) return;
+        // Draw beams from the source to each of its connected points.
+        source.connections.forEach(connIdx => {
+          beamsCtx.beginPath();
+          beamsCtx.moveTo(sourcePoint.sx, sourcePoint.sy);
+          beamsCtx.lineTo(points[connIdx].sx, points[connIdx].sy);
+          beamsCtx.stroke();
+        });
+      }
+      
+      /***** SPREADING THE INFECTION *****/
+      // For each active beam source, check if it’s time to spread (i.e. add a new connection)
+      function spreadInfection() {
+        beamSources.forEach(source => {
+          const holdTime = Date.now() - source.startTime;
+          if (holdTime > (source.spreadCount + 1) * 300) {
+            const sourcePoint = points[source.index];
+            let minDist = Infinity;
+            let candidateIdx = null;
+            for (let i = 0; i < points.length; i++){
+              if (points[i].infected) continue;
+              const dx = sourcePoint.sx - points[i].sx;
+              const dy = sourcePoint.sy - points[i].sy;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < minDist) {
+                minDist = dist;
+                candidateIdx = i;
+              }
+            }
+            if (candidateIdx !== null) {
+              points[candidateIdx].infected = true;
+              source.connections.push(candidateIdx);
+              beamSources.push({
+                index: candidateIdx,
+                startTime: Date.now(),
+                spreadCount: 0,
+                connections: []
+              });
+              source.spreadCount++;
+            }
+          }
+        });
+      }
+      
+      /***** MAIN ANIMATION LOOP FOR THE SPHERE *****/
+      function animateSphere(){
+        const t = (Date.now() - initialTime) * 0.001;
+        numberSize = 16 + 8 * Math.abs(Math.sin(t * 0.3));
+        sphereRadius = 200 + 50 * Math.abs(Math.sin(t * 0.21 + 1.5));
+        autoRotateSpeedX *= 0.98;
+        autoRotateSpeedY *= 0.98;
+        if (!isDragging) {
+          rotationX += autoRotateSpeedX;
+          rotationY += autoRotateSpeedY;
+        }
+        updatePoints();
+        if (beamsCtx) {
+          beamsCtx.clearRect(0, 0, beamsCanvas.width, beamsCanvas.height);
+        }
+        spreadInfection();
+        beamSources.forEach(source => {
+          drawBeamsForSource(source);
+        });
+        requestAnimationFrame(animateSphere);
+      }
+      
+      /***** POINTER (MOUSE & TOUCH) INTERACTIVITY *****/
+      let isDragging = false, lastMouseX, lastMouseY;
+      let pointerDownX = 0, pointerDownY = 0;
+      
+      function pointerStart(e) {
+        isDragging = true;
+        pointerDownX = e.touches ? e.touches[0].clientX : e.clientX;
+        pointerDownY = e.touches ? e.touches[0].clientY : e.clientY;
+        lastMouseX = pointerDownX;
+        lastMouseY = pointerDownY;
+        container.style.cursor = 'grabbing';
+        const rect = container.getBoundingClientRect();
+        const localX = pointerDownX - rect.left;
+        const localY = pointerDownY - rect.top;
+        let minDist = Infinity, closestIndex = null;
+        points.forEach((p, i) => {
+          const dx = p.sx - localX;
+          const dy = p.sy - localY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDist) {
+            minDist = dist;
+            closestIndex = i;
+          }
+        });
+        if (closestIndex !== null) {
+          points[closestIndex].infected = true;
+          beamSources.push({
+            index: closestIndex,
+            startTime: Date.now(),
+            spreadCount: 0,
+            connections: []
+          });
+        }
+      }
+      
+      function pointerMove(e) {
+        if (!isDragging) return;
+        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+        const deltaX = currentX - lastMouseX;
+        const deltaY = currentY - lastMouseY;
+        rotationY += deltaX * 0.005;
+        rotationX += deltaY * 0.005;
+        lastMouseX = currentX;
+        lastMouseY = currentY;
+      }
+      
+      function pointerEnd(e) {
+        isDragging = false;
+        container.style.cursor = 'grab';
+        beamSources = [];
+        if (beamsCtx) beamsCtx.clearRect(0, 0, beamsCanvas.width, beamsCanvas.height);
+        points.forEach(p => { p.infected = false; });
+      }
+      
+      container.addEventListener('mousedown', pointerStart);
+      window.addEventListener('mousemove', pointerMove);
+      window.addEventListener('mouseup', pointerEnd);
+      container.addEventListener('touchstart', pointerStart, { passive: true });
+      container.addEventListener('touchmove', pointerMove, { passive: true });
+      container.addEventListener('touchend', pointerEnd, { passive: true });
+      
+      createPoints();
+      animateSphere();
+      
+      window.addEventListener('resize', function(){
+        if (beamsCanvas) {
+          const dpr = window.devicePixelRatio || 1;
+          beamsCanvas.width = container.clientWidth * dpr;
+          beamsCanvas.height = container.clientHeight * dpr;
+          beamsCanvas.style.width = container.clientWidth + "px";
+          beamsCanvas.style.height = container.clientHeight + "px";
+          beamsCtx.scale(dpr, dpr);
+        }
+      });
+      
+    })();
+    
+    /***** CYBERPUNK NAME: TWITCH ANIMATION ON CLICK *****/
+    (function(){
+      const nameEl = document.querySelector('.cyber-name');
+      nameEl.addEventListener('click', function(){
+        nameEl.classList.add('twitch');
+        nameEl.addEventListener('animationend', function(){
+          nameEl.classList.remove('twitch');
+        }, { once: true });
+      });
+    })();
+    
+    /***** WAVY BACKGROUND: SHADER WITH RANDOM, CHAOTIC WAVES *****/
+    (function(){
+      let scene, camera, renderer, material, geometry, startTime;
+      scene = new THREE.Scene();
+      camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      geometry = new THREE.PlaneGeometry(2, 2);
+      
+      const vertexShader = `
+        varying vec2 vUv;
+        void main(){
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `;
+      
+      const noiseFunc = `
+        float random(vec2 st) {
+          return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+        }
+        float noise(vec2 st) {
+          vec2 i = floor(st);
+          vec2 f = fract(st);
+          float a = random(i);
+          float b = random(i + vec2(1.0, 0.0));
+          float c = random(i + vec2(0.0, 1.0));
+          float d = random(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(a, b, u.x) +
+                 (c - a) * u.y * (1.0 - u.x) +
+                 (d - b) * u.x * u.y;
+        }
+      `;
+      
+      const fragmentShader = `
+        uniform float time;
+        varying vec2 vUv;
+        ${noiseFunc}
+        void main(){
+          vec2 uv = vUv * 2.0 - 1.0;
+          float wave1 = sin(uv.x * 10.0 + time * 0.5) * 0.03;
+          float wave2 = cos(uv.y * 15.0 - time * 0.7) * 0.03;
+          float wave3 = sin((uv.x + uv.y) * 8.0 + time) * 0.02;
+          float wave4 = cos((uv.x - uv.y) * 12.0 + time * 1.5) * 0.025;
+          float wave5 = sin(uv.x * 20.0 - time * 0.9) * 0.02;
+          float n = noise(uv * 4.0 + time * 0.5) * 0.03;
+          float displacement = wave1 + wave2 + wave3 + wave4 + wave5 + n;
+          float pattern = smoothstep(0.45, 0.55, fract((uv.y + displacement) * 40.0));
+          vec3 col = mix(vec3(0.0), vec3(0.1, 0.1, 0.1), pattern);
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `;
+      
+      material = new THREE.ShaderMaterial({
+        uniforms: { time: { value: 0.0 } },
+        vertexShader: vertexShader,
+        fragmentShader: fragmentShader
+      });
+      
+      const quad = new THREE.Mesh(geometry, material);
+      scene.add(quad);
+      
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.domElement.style.position = 'fixed';
+      renderer.domElement.style.top = '0';
+      renderer.domElement.style.left = '0';
+      renderer.domElement.style.zIndex = '-1';
+      document.body.prepend(renderer.domElement);
+      
+      startTime = Date.now();
+      function animateBackground(){
+        material.uniforms.time.value = (Date.now() - startTime) * 0.001;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animateBackground);
+      }
+      animateBackground();
+      
+      window.addEventListener('resize', function(){
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    })();
+  </script>
+</body>
+</html>
