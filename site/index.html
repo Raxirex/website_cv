@@ -89,6 +89,32 @@ See the LICENSE file for the full license text.
       100% { transform: translate(0, 0) skew(0deg, 0deg); text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff; }
     }
     .twitch { animation: twitch 1s; }
+
+    /* ----------------------- Projects ----------------------- */
+    #cv-content .project-list li { margin-bottom: 14px; }
+    .project {
+      display: block;
+      padding: 12px 16px;
+      color: #fff;
+      text-decoration: none;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(0, 0, 0, 0.55);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .project::before { content: "> "; color: #00ffff; }
+    .project-index { color: #ff00ff; margin-right: 8px; }
+    .project-name { font-size: 18px; letter-spacing: 1px; }
+    .project-desc { display: block; margin-top: 4px; color: #aaa; font-size: 13px; }
+    .project:hover, .project:focus-visible {
+      border-color: #00ffff;
+      background: rgba(0, 0, 0, 0.8);
+      outline: none;
+    }
+    .project:hover .project-name, .project:focus-visible .project-name {
+      display: inline-block;
+      animation: twitch 0.6s;
+      text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff;
+    }
   </style>
 </head>
 <body>
@@ -104,47 +130,41 @@ See the LICENSE file for the full license text.
       <h1 class="cyber-name">"Nani gigantum humeris insidentes"</h1>
       <h1 class="cyber-name">>>> Person</h1>
       <p>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce in libero at urna varius laoreet. Cras in sapien nec nunc dignissim cursus ut ac magna. Vivamus convallis nulla sit amet est cursus, a luctus neque convallis.
+        Hi, I am Ege Çelikel, just a guy who is really interested in the universe!
       </p>
     </section>
-    <section id="experience">
-      <h2>Experience</h2>
-      <ul>
+    <section id="projects">
+      <h1 class="cyber-name">>>> Projects</h1>
+      <ul class="project-list">
         <li>
-          <strong>University</strong> - Company A (2024 - Present)<br>
-          Mechanical Engineering BSc.
+          <a class="project" href="https://github.com/Raxirex/simulatics" target="_blank" rel="noopener">
+            <span class="project-index">[01]</span>
+            <span class="project-name">Simulatics</span>
+            <span class="project-desc">Robotics simulation &middot; source on GitHub &nearr;</span>
+          </a>
         </li>
         <li>
-          <strong>Head &amp; University</strong> - Company B (2022 - 2023)<br>
-          Mechanical Engineering BSc.
+          <a class="project" href="/projects/labs/#mechanics">
+            <span class="project-index">[02]</span>
+            <span class="project-name">Planar Dynamics Lab</span>
+            <span class="project-desc">Build mechanisms and pulley systems, then run them in time</span>
+          </a>
+        </li>
+        <li>
+          <a class="project" href="/projects/labs/#statics">
+            <span class="project-index">[03]</span>
+            <span class="project-name">Statics &amp; Frames Lab</span>
+            <span class="project-desc">Draw a frame, load it, and see reactions and M, Q, N diagrams</span>
+          </a>
+        </li>
+        <li>
+          <a class="project" href="/projects/labs/#som">
+            <span class="project-index">[04]</span>
+            <span class="project-name">Strength of Materials Lab</span>
+            <span class="project-desc">Sections, bending, shear, torsion, elastic line and buckling</span>
+          </a>
         </li>
       </ul>
-    </section>
-    <section id="education">
-      <h2>Education</h2>
-      <ul>
-        <li>
-          <strong>Bachelor's Degree</strong> - University (2024 - Present)<br>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-        </li>
-        <li>
-          <strong>Bachelor's Degree (Transferred)</strong> - University (2022 - 2023)
-        </li>
-      </ul>
-    </section>
-    <section id="skills">
-      <h2>Skills</h2>
-      <p>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin lacinia, massa ac facilisis cursus, lacus lorem gravida metus, non malesuada erat sapien sed ipsum.
-      </p>
-    </section>
-    <section id="contact">
-      <h2>Contact</h2>
-      <p>
-        Email: john.doe@example.com<br>
-        Phone: +1234567890<br>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-      </p>
     </section>
   </div>
 
