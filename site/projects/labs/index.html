@@ -253,7 +253,7 @@ MB.deferred = { done: false, list: ["js/ui-panels.js", "js/ui-canvas.js", "js/ap
     /* scripts that wait for DOMContentLoaded must still start after the whole batch has run, as they did when everything was loaded at once */
     try { Object.defineProperty(document, 'readyState', { configurable: true, get: function () { return 'loading'; } }); } catch (e) { /* keep the real value */ }
     document.addEventListener = function (t, f, o) { if (t === 'DOMContentLoaded') q.push(f); else add.call(document, t, f, o); };
-    todo.forEach(function (i) { got[i] = true; var s = document.createElement('script'); s.src = D.list[i]; s.async = false; s.onload = s.onerror = function () { if (--left === 0) fin(); }; document.body.appendChild(s); });
+    todo.forEach(function (i) { got[i] = true; var s = document.createElement('script'); s.src = (window.SITE_ASSET_BASE || '') + D.list[i]; s.async = false; s.onload = s.onerror = function () { if (--left === 0) fin(); }; document.body.appendChild(s); });
     function fin() { try { delete document.readyState; } catch (e) { /* ignore */ } document.addEventListener = add; q.forEach(function (f) { try { f.call(document, new Event('DOMContentLoaded')); } catch (e) { console.error(e); } }); busy = false; D.done = every.every(function (i) { return got[i]; }); if (job[1]) job[1](); pump(); } }
 })();</script>
 </body>

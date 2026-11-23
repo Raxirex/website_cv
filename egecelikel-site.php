@@ -103,10 +103,45 @@ function egecelikel_site_send( $relative ) {
 	header( 'X-Frame-Options: SAMEORIGIN' );
 	header( 'Cache-Control: public, max-age=300' );
 
-	if ( 'HEAD' !== ( isset( $_SERVER['REQUEST_METHOD'] ) ? $_SERVER['REQUEST_METHOD'] : 'GET' ) ) {
+	if ( 'HEAD' === ( isset( $_SERVER['REQUEST_METHOD'] ) ? $_SERVER['REQUEST_METHOD'] : 'GET' ) ) {
+		exit;
+	}
+
+	if ( 'html' === $ext || 'htm' === $ext ) {
+		$rel_dir = trim( str_replace( '\\', '/', dirname( substr( $file, strlen( $base ) + 1 ) ) ), '/.' );
+		echo egecelikel_site_fix_asset_urls( file_get_contents( $file ), $rel_dir ); // phpcs:ignore WordPress.Security.EscapeOutput -- our own static file.
+	} else {
 		readfile( $file );
 	}
 	exit;
+}
+
+/**
+ * The web server answers .js, .css, font and image requests itself and never passes them to
+ * WordPress, so a page served at /projects/foo/ cannot load "js/app.js" from /projects/foo/js/.
+ * Point relative asset URLs at the files' real location inside this plugin instead, and tell
+ * scripts that build asset URLs at runtime via window.SITE_ASSET_BASE.
+ *
+ * @param string $html    Page HTML.
+ * @param string $rel_dir Folder of the page relative to site/ ('' for the root).
+ */
+function egecelikel_site_fix_asset_urls( $html, $rel_dir ) {
+	$asset_base = plugins_url( 'site/' . ( '' === $rel_dir ? '' : $rel_dir . '/' ), __FILE__ );
+
+	// src/href on script, link, img, source, audio, video, unless absolute, root-relative, a fragment or a scheme (data:, https:...).
+	$html = preg_replace_callback(
+		'#(<(?:script|link|img|source|audio|video)\b[^>]*?\s(?:src|href)=)(["\'])(?![\#/]|[a-zA-Z][a-zA-Z0-9+.\-]*:)([^"\']+)\2#i',
+		function ( $m ) use ( $asset_base ) {
+			return $m[1] . $m[2] . esc_url( $asset_base . $m[3] ) . $m[2];
+		},
+		$html
+	);
+
+	$setup = '<script>window.SITE_ASSET_BASE = ' . wp_json_encode( $asset_base ) . ';</script>';
+	$count = 0;
+	$html  = preg_replace( '#<head\b[^>]*>#i', '$0' . $setup, $html, 1, $count );
+
+	return $count ? $html : $setup . $html;
 }
 
 /**

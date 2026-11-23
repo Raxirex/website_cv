@@ -9,7 +9,7 @@
   const MB = G.MB;
   const T = (MB.Tex = { ready: false, failed: false });
   let loading = false, queue = [];
-  const BASE = 'vendor/katex/';
+  const BASE = (window.SITE_ASSET_BASE || '') + 'vendor/katex/';
   /* LaTeX → a readable fallback: drop commands that only typeset, keep symbols */
   const SYM = { '\\cdot': '·', '\\times': '×', '\\pi': 'π', '\\sigma': 'σ', '\\tau': 'τ', '\\varphi': 'φ', '\\phi': 'φ', '\\theta': 'θ', '\\lambda': 'λ', '\\chi': 'χ', '\\Phi': 'Φ', '\\Delta': 'Δ', '\\delta': 'δ', '\\alpha': 'α', '\\beta': 'β', '\\kappa': 'κ', '\\eta': 'η', '\\zeta': 'ζ', '\\varepsilon': 'ε', '\\epsilon': 'ε', '\\mu': 'μ', '\\nu': 'ν', '\\rho': 'ρ', '\\omega': 'ω', '\\Omega': 'Ω', '\\gamma': 'γ', '\\int': '∫', '\\oint': '∮', '\\sum': 'Σ', '\\partial': '∂', '\\infty': '∞', '\\approx': '≈', '\\le': '≤', '\\ge': '≥', '\\leq': '≤', '\\geq': '≥', '\\neq': '≠', '\\pm': '±', '\\to': '→', '\\Rightarrow': '⇒', '\\quad': '  ', '\\qquad': '    ', '\\,': ' ', '\\;': ' ', '\\!': '', '\\left': '', '\\right': '', '\\sqrt': '√', '\\prime': '′', '\\perp': '⊥', '\\max': 'max', '\\min': 'min', '\\sin': 'sin', '\\cos': 'cos', '\\tan': 'tan', '\\ln': 'ln', '\\exp': 'exp' };
   T.plain = (s) => String(s).replace(/\\(?:mathrm|text|mathbf|boldsymbol|operatorname)\{([^{}]*)\}/g, '$1').replace(/\\(?:d|t)?frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)').replace(/\\[a-zA-Z]+|\\[,;!]/g, (m) => (SYM[m] != null ? SYM[m] : '')).replace(/[{}]/g, '').replace(/&/g, '').replace(/\\\\/g, '; ').replace(/\^/g, '^').replace(/\s+/g, ' ').trim();
