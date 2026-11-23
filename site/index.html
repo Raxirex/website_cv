@@ -36,16 +36,28 @@ See the LICENSE file for the full license text.
 
     #sphere-container {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 600px;
-      height: 600px;
-      transform: translate(-50%, -50%);
-      perspective: 800px;
-      cursor: grab;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100vh;
+      min-height: 560px;
       z-index: 10;
-
+      overflow: hidden;
     }
+    #sphere-canvas { width: 100%; height: 100%; cursor: grab; touch-action: pan-y; }
+    #sphere-canvas:active { cursor: grabbing; }
+    #sphere-hud {
+      position: absolute;
+      left: 16px;
+      bottom: 20px;
+      pointer-events: none;
+      font-size: 12px;
+      letter-spacing: 1px;
+      line-height: 1.7;
+      color: rgba(255, 255, 255, 0.8);
+      text-shadow: 0 0 6px #000;
+    }
+    #sphere-hud .hint { color: rgba(255, 255, 255, 0.45); }
 
     /* ----------------------- Sphere Points ----------------------- */
     .sphere-point {
@@ -169,281 +181,594 @@ See the LICENSE file for the full license text.
   </div>
 
   <script>
-    /***** SPHERE CODE: Perspective Projection, Auto‑Variation, Deceleration, & Pointer Interactivity *****/
+    /***** THE SPHERE: modes, morphing math shapes, branching infection, cinematic effects *****
+     * tap ............ morph to the next shape of the current mode
+     * double-tap ..... next mode (Origin, Cyberpunk, Mathematics, Cosmos, Arcane, Hologram); key M also works, N = next shape
+     * hold ........... infect the nearest symbol; every infected symbol infects up to 5 more, faster the longer you hold
+     *                  stage I (1.2 s) branching, stage II (2.5 s) the mode's own effect, stage III (4.5 s) full power
+     * release ........ the mode's release effect (shockwave, supernova, ember burst, glitch, implosion)
+     * drag ........... spin the sphere */
     (function(){
-      // Base parameters for the sphere.
-      let numberSize = 16;      // Initial symbol font size.
-      let sphereRadius = 200;   // Initial sphere radius.
-      const amount = 63;        // Fixed number of symbols.
-      let rotationX = 0;        // Rotation angle around X-axis.
-      let rotationY = 0;        // Rotation angle around Y-axis.
-      let points = [];          // Array to store each sphere point's data.
       const container = document.getElementById('sphere-container');
-      const goldenAngle = Math.PI * (3 - Math.sqrt(5));  // Golden angle for uniform distribution.
+      const canvas = document.createElement('canvas');
+      canvas.id = 'sphere-canvas';
+      container.appendChild(canvas);
+      const ctx = canvas.getContext('2d');
+      const hud = document.createElement('div');
+      hud.id = 'sphere-hud';
+      container.appendChild(hud);
 
-      // Auto-rotation speeds start high and decay over time.
-      let autoRotateSpeedX = 0.01;
-      let autoRotateSpeedY = 0.01;
+      const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      const N = 80;
+      const TAU = Math.PI * 2;
+      const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+      const STAGES = [0, 1200, 2500, 4500];
+      const rand = (a, b) => a + Math.random() * (b - a);
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const range = (f) => Array.from({ length: N }, (_, i) => f(i));
+      const stageOf = (held) => (held > STAGES[3] ? 3 : held > STAGES[2] ? 2 : held > STAGES[1] ? 1 : 0);
 
-      // Record the initial time.
-      const initialTime = Date.now();
+      /* ---------------- Shapes: N points each, normalised into the unit ball ---------------- */
+      function lorenz() {
+        let x = 0.1, y = 0, z = 0;
+        const out = [], dt = 0.005;
+        for (let s = 0; s < 16000 && out.length < N; s++) {
+          const dx = 10 * (y - x), dy = x * (28 - z) - y, dz = x * y - (8 / 3) * z;
+          x += dx * dt; y += dy * dt; z += dz * dt;
+          if (s >= 2000 && (s - 2000) % 175 === 0) out.push([x, z - 25, y]);
+        }
+        return out;
+      }
+      function tesseract() {
+        const v = [];
+        for (let i = 0; i < 16; i++) v.push([i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1, i & 8 ? 1 : -1]);
+        const pts = v.map((p) => p.slice());
+        for (let a = 0; a < 16; a++) for (let b = a + 1; b < 16; b++) {
+          const d = a ^ b;
+          if ((d & (d - 1)) === 0) [1 / 3, 2 / 3].forEach((f) => pts.push(v[a].map((c, k) => c + (v[b][k] - c) * f)));
+        }
+        return pts; // 16 vertices + 2 points on each of the 32 edges = 80
+      }
+      function fib(i) { const y = 1 - 2 * i / (N - 1), r = Math.sqrt(1 - y * y), t = GOLDEN * i; return [Math.cos(t) * r, y, Math.sin(t) * r]; }
+      const SHAPES = {
+        sphere:    { name: 'Fibonacci sphere', make: () => range(fib) },
+        torus:     { name: 'Torus', make: () => range((i) => { const u = TAU * (i % 16) / 16, v = TAU * Math.floor(i / 16) / 5, r = 1 + 0.45 * Math.cos(v); return [r * Math.cos(u), 0.45 * Math.sin(v), r * Math.sin(u)]; }) },
+        trefoil:   { name: 'Trefoil knot', make: () => range((i) => { const t = TAU * i / N; return [Math.sin(t) + 2 * Math.sin(2 * t), Math.cos(t) - 2 * Math.cos(2 * t), -Math.sin(3 * t)]; }) },
+        mobius:    { name: 'Möbius strip', make: () => range((i) => { const u = TAU * (i % 20) / 20, v = -0.5 + Math.floor(i / 20) / 3, r = 1 + v / 2 * Math.cos(u / 2); return [r * Math.cos(u), v / 2 * Math.sin(u / 2), r * Math.sin(u)]; }) },
+        klein:     { name: 'Klein bottle', make: () => range((i) => { const u = TAU * (i % 16) / 16, v = TAU * Math.floor(i / 16) / 5, a = 2 + Math.cos(u / 2) * Math.sin(v) - Math.sin(u / 2) * Math.sin(2 * v); return [a * Math.cos(u), Math.sin(u / 2) * Math.sin(v) + Math.cos(u / 2) * Math.sin(2 * v), a * Math.sin(u)]; }) },
+        harmonic:  { name: 'Spherical harmonic |Y₃²|', make: () => range((i) => { const [x, y, z] = fib(i), th = Math.acos(y), ph = Math.atan2(z, x), r = 0.35 + Math.abs(Math.sin(th) * Math.sin(th) * Math.cos(th) * Math.cos(2 * ph)) * 2.6; return [x * r, y * r, z * r]; }) },
+        lorenz:    { name: 'Lorenz attractor', make: lorenz },
+        helix:     { name: 'Double helix', make: () => range((i) => { const s = i % 2, k = Math.floor(i / 2), t = k * 0.42 + s * Math.PI; return [0.45 * Math.cos(t), -1 + 2 * k / (N / 2 - 1), 0.45 * Math.sin(t)]; }) },
+        galaxy:    { name: 'Spiral galaxy', make: () => range((i) => { const arm = i % 4, k = Math.floor(i / 4), r = 0.12 + 0.88 * k / (N / 4 - 1), a = arm * TAU / 4 + r * 3.4 + 0.15 * Math.sin(i * 12.9898); return [r * Math.cos(a), 0.05 * Math.sin(i * 78.233), r * Math.sin(a)]; }) },
+        lissajous: { name: 'Lissajous knot', make: () => range((i) => { const t = TAU * i / N; return [Math.sin(3 * t), Math.sin(2 * t + 0.7), Math.sin(5 * t + 1.3)]; }) },
+        tesseract: { name: 'Tesseract (4D)', four: true, make: tesseract }
+      };
+      Object.keys(SHAPES).forEach((k) => {
+        const pts = SHAPES[k].make().slice(0, N).map((p) => [p[0], p[1], p[2], p[3] || 0]);
+        while (pts.length < N) pts.push(pts[0].slice());
+        const c = [0, 0, 0, 0];
+        pts.forEach((p) => p.forEach((v, j) => (c[j] += v / N)));
+        let m = 0;
+        pts.forEach((p) => { for (let j = 0; j < 4; j++) p[j] -= c[j]; m = Math.max(m, Math.hypot(p[0], p[1], p[2], p[3])); });
+        pts.forEach((p) => { for (let j = 0; j < 4; j++) p[j] /= m || 1; });
+        SHAPES[k].pts = pts;
+        // the two nearest neighbours of every point, for the wireframe view
+        SHAPES[k].mesh = pts.map((p, i) => pts
+          .map((q, j) => [j, (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2 + (p[3] - q[3]) ** 2])
+          .filter((e) => e[0] !== i).sort((a, b) => a[1] - b[1]).slice(0, 2).map((e) => e[0]));
+      });
 
-      // Global array of active beam sources.
-      // Each beam source is an object: { index, startTime, spreadCount, connections }
-      let beamSources = [];
+      /* ---------------- Modes ---------------- */
+      const THEMES = [
+        { id: 'origin', name: 'ORIGIN', glyphs: '0123456789αβγδεζηθικλμνξοπρστυφχψω力智火ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+          base: [0, 0, 100], palette: [[0, 0, 100], [190, 70, 80], [300, 70, 80]], link: 'line',
+          shapes: ['sphere', 'torus', 'trefoil', 'lissajous'], special: 'waves', fade: 0.8 },
+        { id: 'cyber', name: 'CYBERPUNK', glyphs: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホ0123456789ABCDEF#$%&@',
+          base: [300, 100, 78], palette: [[300, 100, 60], [180, 100, 55], [56, 100, 55]], link: 'circuit',
+          shapes: ['sphere', 'tesseract', 'torus', 'lissajous'], special: 'glitch', fade: 0.55 },
+        { id: 'math', name: 'MATHEMATICS', glyphs: '∑∫∂∇∞√πφλΩ∮≈≡∀∃∈ℵℝℂℤℕ⊕⊗ΔΨ',
+          base: [40, 90, 82], palette: [[40, 100, 65], [210, 100, 75], [0, 0, 100]], link: 'curve', mesh: true,
+          shapes: ['harmonic', 'trefoil', 'mobius', 'klein', 'lorenz', 'lissajous'], special: 'morph', fade: 0.55 },
+        { id: 'cosmos', name: 'COSMOS', glyphs: '✦✧★☆✶✷✸·☉☽♃♄♅♆',
+          base: [220, 80, 88], palette: [[220, 100, 75], [35, 100, 80], [275, 90, 72]], link: 'beam',
+          shapes: ['galaxy', 'sphere', 'helix', 'torus'], special: 'blackhole', fade: 0.35 },
+        { id: 'arcane', name: 'ARCANE', glyphs: 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ',
+          base: [15, 100, 66], palette: [[5, 100, 52], [28, 100, 56], [45, 100, 62]], link: 'sigil',
+          shapes: ['sphere', 'trefoil', 'torus', 'klein'], special: 'summon', fade: 0.45 },
+        { id: 'holo', name: 'HOLOGRAM', glyphs: '01◇◆◈▣□■△▽○●⊡⊞',
+          base: [170, 100, 72], palette: [[170, 100, 55], [190, 100, 70], [0, 0, 100]], link: 'pulse', mesh: true,
+          shapes: ['tesseract', 'helix', 'sphere', 'lissajous'], special: 'unfold', fade: 0.5 }
+      ];
+      THEMES.forEach((t) => (t.glyphList = Array.from(t.glyphs)));
+      const hsl = (c, shift, a) => `hsla(${((c[0] + shift) % 360).toFixed(1)},${c[1]}%,${c[2]}%,${a})`;
 
-      /***** Helper Functions *****/
-      function getUniqueSymbolPool() {
-        const digits = ["0","1","2","3","4","5","6","7","8","9"];
-        const greekChars = ["α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "φ", "χ", "ψ", "ω"];
-        const chineseChars = ["力", "智"];
-        const japaneseFire = ["火"];
-        const latinUpper = [];
-        for (let i = 65; i <= 90; i++){
-          latinUpper.push(String.fromCharCode(i));
+      /* ---------------- State ---------------- */
+      let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, R = 200;
+      let themeIdx = 0, theme = THEMES[0], shapeIdx = 0, shape = SHAPES[theme.shapes[0]];
+      const start = performance.now();
+      const nodes = range((i) => ({
+        p: shape.pts[i].map((v) => v * 0.02), // start collapsed: the sphere unfolds on load
+        g: pick(theme.glyphList), scr: start + rand(300, 1400),
+        sx: 0, sy: 0, sc: 1, z: 0, shrink: 1, inf: false, gen: 0, kids: 0, maxKids: 1, last: 0
+      }));
+      let rotX = 0.35, rotY = 0, spinX = 0.004, spinY = 0.009, a4 = 0, fourMix = 0;
+      let links = [], rings = [], parts = [], stars = [], rain = [];
+      let holding = false, holdStart = 0, seed = -1, infectedCount = 0, climaxed = false, moved = false;
+      let ptr = { x: 0, y: 0 }, down = { x: 0, y: 0 }, last = { x: 0, y: 0 };
+      let hueShift = 0, shake = 0, flash = 0, glitchUntil = 0;
+      const bh = { x: 0, y: 0, power: 0, spin: 0 };
+      const circle = { x: 0, y: 0, power: 0 };
+      let lastInteract = start, lastMorph = start, tapTimer = null, lastHud = 0, hudKey = '';
+
+      const colorOf = (gen, a) => hsl(theme.palette[gen % theme.palette.length], hueShift, a);
+      function spawn(x, y, vx, vy, c, life, s) { if (parts.length < 1200) parts.push({ x, y, vx, vy, c, life, s, born: performance.now() }); }
+      function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+
+      function resize() {
+        DPR = Math.min(2, window.devicePixelRatio || 1);
+        W = container.clientWidth; H = container.clientHeight;
+        canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        cx = W / 2; cy = H / 2;
+        initAmbient();
+      }
+      function initAmbient() {
+        stars = theme.special === 'blackhole' ? Array.from({ length: 260 }, () => ({ x: rand(0, W), y: rand(0, H), vx: rand(-0.08, 0.08), vy: rand(-0.08, 0.08), tw: rand(0, TAU), s: rand(0.6, 1.9) })) : [];
+        rain = theme.special === 'glitch' ? Array.from({ length: 34 }, () => ({ x: Math.round(rand(0, W) / 18) * 18, y: rand(-H, H), v: rand(1.5, 4.5) })) : [];
+      }
+
+      /* ---------------- Modes, shapes, effects ---------------- */
+      function setTheme(i, now) {
+        themeIdx = (i + THEMES.length) % THEMES.length;
+        theme = THEMES[themeIdx];
+        shapeIdx = 0; shape = SHAPES[theme.shapes[0]]; lastMorph = now;
+        nodes.forEach((n) => { n.g = pick(theme.glyphList); n.scr = now + rand(200, 800); });
+        parts = []; bh.power = 0; circle.power = 0;
+        initAmbient();
+        burst(now, cx, cy, 1);
+        hudKey = '';
+      }
+      function nextShape(now) {
+        shapeIdx = (shapeIdx + 1) % theme.shapes.length;
+        shape = SHAPES[theme.shapes[shapeIdx]];
+        lastMorph = now; hudKey = '';
+      }
+      function burst(now, x, y, size) {
+        rings.push({ x, y, born: now, max: 260 * size, c: theme.palette[0] });
+        if (!reduceMotion) { flash = Math.max(flash, 0.3 * size); shake = Math.max(shake, 8 * size); }
+        if (theme.special === 'glitch') glitchUntil = now + 250 * size;
+      }
+      function infect(i, parent, now) {
+        const n = nodes[i];
+        if (n.inf) return;
+        n.inf = true; n.kids = 0; n.last = now;
+        n.gen = parent >= 0 ? nodes[parent].gen + 1 : 0;
+        n.maxKids = parent < 0 ? 5 : 1 + Math.floor(Math.random() * 5); // every node may infect up to 5 more
+        infectedCount++;
+        if (parent >= 0) { links.push({ a: parent, b: i, born: now, dying: 0, gen: n.gen }); nodes[parent].kids++; nodes[parent].last = now; }
+      }
+      function supernova(now) {
+        if (!reduceMotion) { flash = 0.9; shake = 14; }
+        rings.push({ x: bh.x, y: bh.y, born: now, max: Math.max(W, H), c: [40, 100, 85] });
+        stars.forEach((s) => { const dx = s.x - bh.x, dy = s.y - bh.y, d = Math.hypot(dx, dy) + 1, v = rand(3, 11); s.vx = dx / d * v; s.vy = dy / d * v; });
+        for (let k = 0; k < 140; k++) { const a = rand(0, TAU), v = rand(1, 9); spawn(bh.x, bh.y, Math.cos(a) * v, Math.sin(a) * v, pick(['#ffffff', '#ffd9a0', '#c77dff', '#9db4ff']), rand(600, 1800), rand(1, 3)); }
+        bh.power = 0; bh.spin = 0;
+      }
+      function release(now, held) {
+        const power = clamp(held / 4000, 0.3, 1.5);
+        const s = seed >= 0 ? nodes[seed] : { sx: ptr.x, sy: ptr.y };
+        rings.push({ x: s.sx, y: s.sy, born: now, max: 220 + 260 * power, c: theme.palette[0] });
+        nodes.forEach((n) => { if (n.inf) for (let k = 0; k < 4; k++) spawn(n.sx, n.sy, rand(-3, 3) * power, rand(-3, 3) * power, colorOf(n.gen, 1), rand(500, 1200), rand(1, 2.5)); });
+        if (!reduceMotion) { shake = Math.max(shake, 6 * power); flash = Math.max(flash, 0.22 * power); }
+        if (theme.special === 'blackhole' && bh.power > 0.2) supernova(now);
+        if (theme.special === 'glitch') glitchUntil = now + 200 + 250 * power;
+        if (theme.special === 'unfold' && held > STAGES[2]) { nodes.forEach((n) => (n.p = n.p.map((v) => v * 0.03))); flash = reduceMotion ? 0 : 0.5; } // implode, then unfold again
+        if (theme.special === 'summon' && circle.power > 0.2) {
+          for (let k = 0; k < 90; k++) { const a = rand(0, TAU), v = rand(1, 6); spawn(circle.x, circle.y, Math.cos(a) * v, Math.sin(a) * v - 1, colorOf(k % 3, 1), rand(600, 1600), rand(1, 3)); }
+          circle.power = 0;
         }
-        return [].concat(digits, greekChars, chineseChars, japaneseFire, latinUpper);
       }
-      
-      function shuffle(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [array[i], array[j]] = [array[j], array[i]];
-        }
-        return array;
+
+      /* ---------------- Input ---------------- */
+      function local(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+      function nearestNode(x, y) {
+        let best = -1, bd = Infinity;
+        nodes.forEach((n, i) => { const d = (n.sx - x) ** 2 + (n.sy - y) ** 2; if (d < bd) { bd = d; best = i; } });
+        return best;
       }
-      
-      /***** Sphere Generation *****/
-      function createPoints(){
-        container.innerHTML = '';  // Clear previous content.
-        createBeamsCanvas();         // Create the overlay canvas for beams.
-        points = [];
-        let pool = shuffle(getUniqueSymbolPool());
-        for (let i = 0; i < amount; i++){
-          const point = document.createElement('div');
-          point.className = 'sphere-point';
-          point.innerText = pool[i % pool.length];
-          // Mark each point as not yet infected.
-          point.infected = false;
-          container.appendChild(point);
-          points.push({ element: point, ox: 0, oy: 0, oz: 0, infected: false });
-        }
-        calculateSpherePoints();
-      }
-      
-      // Calculate 3D coordinates for each point using the Fibonacci sphere algorithm.
-      function calculateSpherePoints(){
-        for (let i = 0; i < points.length; i++){
-          const y = 1 - (i / (points.length - 1)) * 2;  // y from 1 to -1.
-          const radius = Math.sqrt(1 - y * y);
-          const theta = goldenAngle * i;
-          const x = Math.cos(theta) * radius;
-          const z = Math.sin(theta) * radius;
-          points[i].ox = x;
-          points[i].oy = y;
-          points[i].oz = z;
-        }
-      }
-      
-      // Update each point's 2D position using perspective projection.
-      function updatePoints(){
-        const centerX = container.clientWidth / 2;
-        const centerY = container.clientHeight / 2;
-        const sinX = Math.sin(rotationX);
-        const cosX = Math.cos(rotationX);
-        const sinY = Math.sin(rotationY);
-        const cosY = Math.cos(rotationY);
-        points.forEach(p => {
-          const x = p.ox, y = p.oy, z = p.oz;
-          const y1 = y * cosX - z * sinX;
-          const z1 = y * sinX + z * cosX;
-          const x1 = x * cosY + z1 * sinY;
-          const z2 = -x * sinY + z1 * cosY;
-          const perspective = 2;
-          const scale = perspective / (perspective - z2);
-          const screenX = centerX + x1 * sphereRadius * scale;
-          const screenY = centerY + y1 * sphereRadius * scale;
-          p.sx = screenX;
-          p.sy = screenY;
-          p.element.style.left = screenX + 'px';
-          p.element.style.top = screenY + 'px';
-          p.element.style.opacity = scale;
-          p.element.style.fontSize = numberSize + 'px';
-        });
-      }
-      
-      /***** BEAMS OVERLAY *****/
-      let beamsCanvas, beamsCtx;
-      function createBeamsCanvas(){
-        let existing = document.getElementById('beams-overlay');
-        if(existing) { existing.remove(); }
-        beamsCanvas = document.createElement('canvas');
-        beamsCanvas.id = "beams-overlay";
-        const dpr = window.devicePixelRatio || 1;
-        beamsCanvas.width = container.clientWidth * dpr;
-        beamsCanvas.height = container.clientHeight * dpr;
-        beamsCanvas.style.width = container.clientWidth + "px";
-        beamsCanvas.style.height = container.clientHeight + "px";
-        beamsCanvas.style.position = "absolute";
-        beamsCanvas.style.top = "0";
-        beamsCanvas.style.left = "0";
-        beamsCanvas.style.pointerEvents = "none";
-        container.appendChild(beamsCanvas);
-        beamsCtx = beamsCanvas.getContext("2d");
-        beamsCtx.scale(dpr, dpr);
-      }
-      
-      // Draw beams for a given beam source.
-      // Each beam source now has an array "connections" holding indices of points it has infected.
-      function drawBeamsForSource(source) {
-        if (!beamsCtx) return;
-        beamsCtx.strokeStyle = "rgba(255,255,255,1.0)";
-        beamsCtx.lineWidth = 1;
-        const sourcePoint = points[source.index];
-        if (!sourcePoint) return;
-        // Draw beams from the source to each of its connected points.
-        source.connections.forEach(connIdx => {
-          beamsCtx.beginPath();
-          beamsCtx.moveTo(sourcePoint.sx, sourcePoint.sy);
-          beamsCtx.lineTo(points[connIdx].sx, points[connIdx].sy);
-          beamsCtx.stroke();
-        });
-      }
-      
-      /***** SPREADING THE INFECTION *****/
-      // For each active beam source, check if it’s time to spread (i.e. add a new connection)
-      function spreadInfection() {
-        beamSources.forEach(source => {
-          const holdTime = Date.now() - source.startTime;
-          if (holdTime > (source.spreadCount + 1) * 300) {
-            const sourcePoint = points[source.index];
-            let minDist = Infinity;
-            let candidateIdx = null;
-            for (let i = 0; i < points.length; i++){
-              if (points[i].infected) continue;
-              const dx = sourcePoint.sx - points[i].sx;
-              const dy = sourcePoint.sy - points[i].sy;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < minDist) {
-                minDist = dist;
-                candidateIdx = i;
-              }
-            }
-            if (candidateIdx !== null) {
-              points[candidateIdx].infected = true;
-              source.connections.push(candidateIdx);
-              beamSources.push({
-                index: candidateIdx,
-                startTime: Date.now(),
-                spreadCount: 0,
-                connections: []
-              });
-              source.spreadCount++;
-            }
+      canvas.addEventListener('pointerdown', (e) => {
+        const now = performance.now(), p = local(e);
+        ptr = p; down = p; last = { x: e.clientX, y: e.clientY }; moved = false;
+        holding = true; holdStart = now; climaxed = false; lastInteract = now;
+        bh.x = circle.x = p.x; bh.y = circle.y = p.y;
+        links.forEach((l) => { if (!l.dying) l.dying = now; });
+        nodes.forEach((n) => (n.inf = false));
+        infectedCount = 0;
+        seed = nearestNode(p.x, p.y);
+        infect(seed, -1, now);
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* not supported */ }
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        ptr = local(e);
+        if (!holding) return;
+        const dx = e.clientX - last.x, dy = e.clientY - last.y;
+        last = { x: e.clientX, y: e.clientY };
+        if (Math.hypot(ptr.x - down.x, ptr.y - down.y) > 6) moved = true;
+        rotY += dx * 0.005; rotX += dy * 0.005;
+        spinY = dx * 0.002; spinX = dy * 0.002; // fling
+        lastInteract = performance.now();
+      });
+      function endHold(quiet) {
+        if (!holding) return;
+        holding = false;
+        const now = performance.now(), held = now - holdStart;
+        if (!quiet && !moved && held < 250) {
+          if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; setTheme(themeIdx + 1, now); }
+          else {
+            const x = ptr.x, y = ptr.y;
+            tapTimer = setTimeout(() => { tapTimer = null; const t = performance.now(); nextShape(t); rings.push({ x, y, born: t, max: 170, c: theme.palette[1] }); }, 260);
           }
-        });
-      }
-      
-      /***** MAIN ANIMATION LOOP FOR THE SPHERE *****/
-      function animateSphere(){
-        const t = (Date.now() - initialTime) * 0.001;
-        numberSize = 16 + 8 * Math.abs(Math.sin(t * 0.3));
-        sphereRadius = 200 + 50 * Math.abs(Math.sin(t * 0.21 + 1.5));
-        autoRotateSpeedX *= 0.98;
-        autoRotateSpeedY *= 0.98;
-        if (!isDragging) {
-          rotationX += autoRotateSpeedX;
-          rotationY += autoRotateSpeedY;
+        } else if (!quiet) {
+          release(now, held);
         }
-        updatePoints();
-        if (beamsCtx) {
-          beamsCtx.clearRect(0, 0, beamsCanvas.width, beamsCanvas.height);
-        }
-        spreadInfection();
-        beamSources.forEach(source => {
-          drawBeamsForSource(source);
-        });
-        requestAnimationFrame(animateSphere);
+        nodes.forEach((n) => (n.inf = false));
+        links.forEach((l) => { if (!l.dying) l.dying = now; });
+        seed = -1; infectedCount = 0; lastInteract = now;
       }
-      
-      /***** POINTER (MOUSE & TOUCH) INTERACTIVITY *****/
-      let isDragging = false, lastMouseX, lastMouseY;
-      let pointerDownX = 0, pointerDownY = 0;
-      
-      function pointerStart(e) {
-        isDragging = true;
-        pointerDownX = e.touches ? e.touches[0].clientX : e.clientX;
-        pointerDownY = e.touches ? e.touches[0].clientY : e.clientY;
-        lastMouseX = pointerDownX;
-        lastMouseY = pointerDownY;
-        container.style.cursor = 'grabbing';
-        const rect = container.getBoundingClientRect();
-        const localX = pointerDownX - rect.left;
-        const localY = pointerDownY - rect.top;
-        let minDist = Infinity, closestIndex = null;
-        points.forEach((p, i) => {
-          const dx = p.sx - localX;
-          const dy = p.sy - localY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist) {
-            minDist = dist;
-            closestIndex = i;
+      canvas.addEventListener('pointerup', () => endHold(false));
+      canvas.addEventListener('pointercancel', () => endHold(true)); // e.g. the page started scrolling on a phone
+      document.addEventListener('keydown', (e) => {
+        if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+        const now = performance.now();
+        if (e.key === 'm' || e.key === 'M') setTheme(themeIdx + 1, now);
+        if (e.key === 'n' || e.key === 'N') nextShape(now);
+      });
+      window.addEventListener('resize', resize);
+
+      /* ---------------- Simulation ---------------- */
+      function update(now, dt, held, stage) {
+        const ease = 1 - Math.pow(0.93, dt / 16.7);
+        nodes.forEach((n, i) => { const t = shape.pts[i]; for (let k = 0; k < 4; k++) n.p[k] += (t[k] - n.p[k]) * ease; });
+        fourMix += ((shape.four ? 1 : 0) - fourMix) * ease;
+        if (!holding) {
+          spinX += (0.0012 - spinX) * 0.02; spinY += (0.003 - spinY) * 0.02;
+          rotX += spinX * dt / 16.7; rotY += spinY * dt / 16.7;
+        }
+        a4 += dt * (theme.special === 'unfold' && stage >= 2 ? 0.0028 : 0.0006);
+        if (holding && stage >= 1) hueShift += dt * 0.015 * stage;
+
+        if (!holding && now - lastInteract > 14000 && now - lastMorph > 9000) nextShape(now); // idle: keep it alive
+        if (theme.special === 'morph' && holding && stage >= 2 && now - lastMorph > 1600) nextShape(now);
+
+        // infection: each infected node passes it on to its nearest clean neighbour, branching up to 5 ways
+        if (holding && seed >= 0) {
+          const interval = Math.max(45, 380 - held * 0.08);
+          const allowed = 1 + stage * 2;
+          for (let i = 0; i < N; i++) {
+            const n = nodes[i];
+            if (!n.inf || n.kids >= Math.min(n.maxKids, allowed) || now - n.last < interval) continue;
+            let best = -1, bd = Infinity;
+            for (let j = 0; j < N; j++) {
+              if (nodes[j].inf) continue;
+              const q = nodes[j].p, d = (q[0] - n.p[0]) ** 2 + (q[1] - n.p[1]) ** 2 + (q[2] - n.p[2]) ** 2 + (q[3] - n.p[3]) ** 2;
+              if (d < bd) { bd = d; best = j; }
+            }
+            if (best < 0) break;
+            infect(best, i, now);
           }
+          if (!climaxed && infectedCount >= N) { // everything is infected: the climax
+            climaxed = true;
+            const s = nodes[seed];
+            burst(now, s.sx, s.sy, 1.4);
+            hueShift += 50;
+            if (theme.special !== 'morph') nextShape(now);
+          }
+        }
+
+        const want = holding && held > 500 ? clamp((held - 500) / 3000, 0, 1) : 0;
+        if (theme.special === 'blackhole') {
+          bh.x += (ptr.x - bh.x) * 0.15; bh.y += (ptr.y - bh.y) * 0.15;
+          bh.power += (want - bh.power) * (want > bh.power ? 0.04 : 0.12);
+          bh.spin = bh.power > 0.01 ? bh.spin + dt * 0.0025 * bh.power : 0;
+          updateStars(dt);
+        }
+        if (theme.special === 'summon') {
+          circle.x += (ptr.x - circle.x) * 0.12; circle.y += (ptr.y - circle.y) * 0.12;
+          circle.power += (want - circle.power) * 0.05;
+        }
+        const decay = Math.pow(0.9, dt / 16.7);
+        shake *= decay; flash *= decay;
+        R = Math.min(W * 0.42, H * 0.3) * (1 + 0.08 * Math.sin(now * 0.00021 + 1.5));
+        project();
+      }
+      function respawnStar(s) {
+        if (bh.power > 0.02) {
+          const e = Math.floor(Math.random() * 4);
+          s.x = e === 0 ? -10 : e === 1 ? W + 10 : rand(0, W);
+          s.y = e === 2 ? -10 : e === 3 ? H + 10 : rand(0, H);
+        } else { s.x = rand(0, W); s.y = rand(0, H); }
+        s.vx = rand(-0.08, 0.08); s.vy = rand(-0.08, 0.08);
+      }
+      function updateStars(dt) {
+        stars.forEach((s) => {
+          if (bh.power > 0.02) {
+            const dx = bh.x - s.x, dy = bh.y - s.y, d2 = dx * dx + dy * dy + 400, d = Math.sqrt(d2);
+            const a = bh.power * 900 / d2 * dt / 16;
+            s.vx += (dx / d) * a - (dy / d) * a * 0.9;
+            s.vy += (dy / d) * a + (dx / d) * a * 0.9;
+            if (d < 12 + 30 * bh.power) respawnStar(s);
+          }
+          s.vx *= 0.995; s.vy *= 0.995;
+          s.x += s.vx * dt / 16; s.y += s.vy * dt / 16;
+          if (s.x < -30 || s.x > W + 30 || s.y < -30 || s.y > H + 30) respawnStar(s);
         });
-        if (closestIndex !== null) {
-          points[closestIndex].infected = true;
-          beamSources.push({
-            index: closestIndex,
-            startTime: Date.now(),
-            spreadCount: 0,
-            connections: []
+      }
+      function project() {
+        const sX = Math.sin(rotX), cX = Math.cos(rotX), sY = Math.sin(rotY), cY = Math.cos(rotY);
+        const ang = a4 * fourMix, c4 = Math.cos(ang), s4 = Math.sin(ang), c5 = Math.cos(ang * 0.7), s5 = Math.sin(ang * 0.7);
+        nodes.forEach((n) => {
+          let x = n.p[0], y = n.p[1], z = n.p[2];
+          const w = n.p[3];
+          // rotate in the xw and zw planes, then project 4D -> 3D (identity when the shape is 3D)
+          const x1 = x * c4 - w * s4, w1 = x * s4 + w * c4;
+          const z1 = z * c5 - w1 * s5, w2 = z * s5 + w1 * c5;
+          const k = 1.6 / (1.6 - w2);
+          x = x1 * k; y = y * k; z = z1 * k;
+          // 3D rotation and perspective, as in the original sphere
+          const y2 = y * cX - z * sX, z2 = y * sX + z * cX;
+          const x3 = x * cY + z2 * sY, z3 = -x * sY + z2 * cY;
+          const sc = 2 / (2 - clamp(z3, -1.5, 1.5));
+          let px = cx + x3 * R * sc, py = cy + y2 * R * sc;
+          n.shrink = 1;
+          if (bh.power > 0.01) { // swirl into the black hole
+            const dx = px - bh.x, dy = py - bh.y, d = Math.hypot(dx, dy) + 1;
+            const pull = bh.power * clamp(220 / d, 0, 1.2);
+            const turn = pull * (1.5 + bh.spin), ca = Math.cos(turn), sa = Math.sin(turn);
+            const shrink = 1 - clamp(pull * 0.8, 0, 0.94);
+            px = bh.x + (dx * ca - dy * sa) * shrink; py = bh.y + (dx * sa + dy * ca) * shrink;
+            n.shrink = clamp(shrink * 1.2, 0.15, 1);
+          }
+          n.sx = px; n.sy = py; n.sc = sc; n.z = z3;
+        });
+      }
+
+      /* ---------------- Drawing ---------------- */
+      function drawAmbient(now, dt) {
+        if (theme.special === 'blackhole') {
+          ctx.globalCompositeOperation = 'lighter';
+          stars.forEach((s) => {
+            const sp = Math.hypot(s.vx, s.vy), a = 0.35 + 0.65 * Math.abs(Math.sin(now * 0.002 + s.tw));
+            if (sp > 1.2) { ctx.strokeStyle = `rgba(200,215,255,${0.6 * a})`; ctx.lineWidth = s.s; line(s.x, s.y, s.x - s.vx * 3, s.y - s.vy * 3); }
+            else { ctx.fillStyle = `rgba(220,230,255,${a})`; ctx.fillRect(s.x, s.y, s.s, s.s); }
           });
         }
-      }
-      
-      function pointerMove(e) {
-        if (!isDragging) return;
-        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
-        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
-        const deltaX = currentX - lastMouseX;
-        const deltaY = currentY - lastMouseY;
-        rotationY += deltaX * 0.005;
-        rotationX += deltaY * 0.005;
-        lastMouseX = currentX;
-        lastMouseY = currentY;
-      }
-      
-      function pointerEnd(e) {
-        isDragging = false;
-        container.style.cursor = 'grab';
-        beamSources = [];
-        if (beamsCtx) beamsCtx.clearRect(0, 0, beamsCanvas.width, beamsCanvas.height);
-        points.forEach(p => { p.infected = false; });
-      }
-      
-      container.addEventListener('mousedown', pointerStart);
-      window.addEventListener('mousemove', pointerMove);
-      window.addEventListener('mouseup', pointerEnd);
-      container.addEventListener('touchstart', pointerStart, { passive: true });
-      container.addEventListener('touchmove', pointerMove, { passive: true });
-      container.addEventListener('touchend', pointerEnd, { passive: true });
-      
-      createPoints();
-      animateSphere();
-      
-      window.addEventListener('resize', function(){
-        if (beamsCanvas) {
-          const dpr = window.devicePixelRatio || 1;
-          beamsCanvas.width = container.clientWidth * dpr;
-          beamsCanvas.height = container.clientHeight * dpr;
-          beamsCanvas.style.width = container.clientWidth + "px";
-          beamsCanvas.style.height = container.clientHeight + "px";
-          beamsCtx.scale(dpr, dpr);
+        if (theme.special === 'glitch') {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.font = '14px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          rain.forEach((r) => {
+            ctx.fillStyle = hsl(theme.palette[(r.x / 18) % 2 ? 0 : 1], hueShift, 0.35);
+            ctx.fillText(pick(theme.glyphList), r.x, r.y);
+            r.y += r.v * dt / 16;
+            if (r.y > H + 20) { r.y = rand(-200, 0); r.x = Math.round(rand(0, W) / 18) * 18; }
+          });
         }
-      });
-      
+        if (theme.special === 'summon' && Math.random() < 0.35) {
+          spawn(rand(0, W), H + 4, rand(-0.2, 0.2), rand(-1, -0.35), hsl(theme.palette[1], hueShift, 1), rand(2500, 4500), rand(1, 2));
+        }
+        if (theme.special === 'unfold') { // hologram scan beam
+          const y = cy + R * 1.25 * Math.sin(now * 0.0013), w = R * 1.6;
+          const g = ctx.createLinearGradient(0, y - 24, 0, y + 24);
+          g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, hsl(theme.palette[0], hueShift, 0.16)); g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(cx - w, y - 24, w * 2, 48);
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      function drawMesh() {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = hsl(theme.palette[0], hueShift, holding ? 0.32 : 0.13);
+        ctx.beginPath();
+        nodes.forEach((n, i) => shape.mesh[i].forEach((j) => { if (j > i || shape.mesh[j].indexOf(i) < 0) { ctx.moveTo(n.sx, n.sy); ctx.lineTo(nodes[j].sx, nodes[j].sy); } }));
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      function drawLinks(now, stage) {
+        links = links.filter((l) => !l.dying || now - l.dying < 700);
+        ctx.lineCap = 'round';
+        ctx.globalCompositeOperation = stage >= 1 ? 'lighter' : 'source-over';
+        for (const l of links) {
+          const A = nodes[l.a], B = nodes[l.b];
+          const grow = clamp((now - l.born) / 220, 0, 1);
+          const alpha = (l.dying ? 1 - (now - l.dying) / 700 : 1) * clamp(0.5 + 0.5 * A.sc, 0, 1) * (stage >= 1 ? 0.6 : 1);
+          const bx = A.sx + (B.sx - A.sx) * grow, by = A.sy + (B.sy - A.sy) * grow;
+          const col = colorOf(l.gen, alpha);
+          ctx.strokeStyle = col; ctx.lineWidth = 1 + stage * 0.35;
+          switch (theme.link) {
+            case 'circuit':
+              ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(bx, A.sy); ctx.lineTo(bx, by); ctx.stroke();
+              ctx.fillStyle = col; ctx.fillRect(bx - 2, A.sy - 2, 4, 4);
+              break;
+            case 'curve': {
+              const mx = (A.sx + bx) / 2, my = (A.sy + by) / 2;
+              ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.quadraticCurveTo(mx - (by - A.sy) * 0.3, my + (bx - A.sx) * 0.3, bx, by); ctx.stroke();
+              break;
+            }
+            case 'beam':
+              ctx.lineWidth = 4 + stage * 2; ctx.strokeStyle = colorOf(l.gen, alpha * 0.2); line(A.sx, A.sy, bx, by);
+              ctx.lineWidth = 1; ctx.strokeStyle = `rgba(255,255,255,${alpha})`; line(A.sx, A.sy, bx, by);
+              break;
+            case 'sigil':
+              line(A.sx, A.sy, bx, by);
+              ctx.beginPath(); ctx.arc(bx, by, 3 + stage, 0, TAU); ctx.stroke();
+              break;
+            case 'pulse': {
+              ctx.setLineDash([3, 5]); ctx.lineDashOffset = -now * 0.04; line(A.sx, A.sy, bx, by); ctx.setLineDash([]);
+              const f = ((now - l.born) / 500) % 1;
+              ctx.fillStyle = `rgba(255,255,255,${alpha})`; ctx.beginPath(); ctx.arc(A.sx + (bx - A.sx) * f, A.sy + (by - A.sy) * f, 1.8, 0, TAU); ctx.fill();
+              break;
+            }
+            default:
+              line(A.sx, A.sy, bx, by);
+          }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      function drawNodes(now) {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const base = 16 + 8 * Math.abs(Math.sin(now * 0.0003));
+        const order = nodes.slice().sort((a, b) => a.z - b.z); // back to front
+        for (const n of order) {
+          const size = base * (0.75 + 0.25 * n.sc) * n.shrink;
+          const a = clamp(n.sc - 0.25, 0.3, 1);
+          const g = now < n.scr ? pick(theme.glyphList) : n.g;
+          if (n.inf) {
+            const glow = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, size * 1.4);
+            glow.addColorStop(0, colorOf(n.gen, 0.3 * a)); glow.addColorStop(1, colorOf(n.gen, 0));
+            ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = glow;
+            ctx.beginPath(); ctx.arc(n.sx, n.sy, size * 1.4, 0, TAU); ctx.fill();
+          }
+          ctx.font = `${size.toFixed(1)}px monospace`;
+          if (theme.special === 'glitch' && (n.inf || now < n.scr)) { // chromatic split
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = `rgba(255,0,255,${0.7 * a})`; ctx.fillText(g, n.sx - 2, n.sy);
+            ctx.fillStyle = `rgba(0,255,255,${0.7 * a})`; ctx.fillText(g, n.sx + 2, n.sy);
+          }
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = n.inf ? colorOf(n.gen, a) : hsl(theme.base, theme.id === 'origin' ? 0 : hueShift, a);
+          ctx.fillText(g, n.sx, n.sy);
+        }
+      }
+      function drawBlackHole() {
+        const p = bh.power;
+        if (p < 0.02) return;
+        const r = 8 + 34 * p;
+        ctx.save(); ctx.translate(bh.x, bh.y);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.save(); ctx.rotate(-0.35); ctx.scale(1, 0.32); // accretion disk
+        const g = ctx.createRadialGradient(0, 0, r * 1.1, 0, 0, r * 4.2);
+        g.addColorStop(0, `rgba(255,240,220,${0.9 * p})`); g.addColorStop(0.25, `rgba(255,170,80,${0.7 * p})`);
+        g.addColorStop(0.6, `rgba(200,60,160,${0.35 * p})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 4.2, 0, TAU); ctx.fill();
+        ctx.restore();
+        const h = ctx.createRadialGradient(0, 0, r, 0, 0, r * 2.3);
+        h.addColorStop(0, `rgba(255,220,180,${0.8 * p})`); h.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = h; ctx.beginPath(); ctx.arc(0, 0, r * 2.3, 0, TAU); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over'; // event horizon
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter'; // photon ring
+        ctx.strokeStyle = `rgba(255,235,210,${0.9 * p})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, 0, r * 1.08, 0, TAU); ctx.stroke();
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      function drawCircle(now) {
+        const p = circle.power;
+        if (p < 0.02) return;
+        const r = 30 + 100 * p, rot = now * 0.0006;
+        ctx.save(); ctx.translate(circle.x, circle.y); ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.3);
+        g.addColorStop(0, hsl(theme.palette[0], hueShift, 0.22 * p)); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 1.3, 0, TAU); ctx.fill();
+        ctx.strokeStyle = hsl(theme.palette[0], hueShift, 0.85 * p); ctx.lineWidth = 1.5;
+        [1, 0.82, 0.45].forEach((f) => { ctx.beginPath(); ctx.arc(0, 0, r * f, 0, TAU); ctx.stroke(); });
+        ctx.save(); ctx.rotate(-rot * 1.5); ctx.beginPath(); // pentagram
+        for (let k = 0; k <= 5; k++) { const a = -Math.PI / 2 + k * 2 * TAU / 5, x = Math.cos(a) * r * 0.82, y = Math.sin(a) * r * 0.82; if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+        ctx.strokeStyle = hsl(theme.palette[1], hueShift, 0.9 * p); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.rotate(rot); // runes around the ring
+        ctx.fillStyle = hsl(theme.palette[2], hueShift, p); ctx.font = `${10 + 6 * p}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (let k = 0; k < 16; k++) { ctx.save(); ctx.rotate(k * TAU / 16); ctx.fillText(theme.glyphList[(k * 5) % theme.glyphList.length], 0, -r * 0.91); ctx.restore(); }
+        ctx.restore();
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+        if (Math.random() < p) { const a = rand(0, TAU); spawn(circle.x + Math.cos(a) * r, circle.y + Math.sin(a) * r, rand(-0.3, 0.3), rand(-1.6, -0.5), hsl(theme.palette[1], hueShift, 1), rand(800, 1600), rand(1, 2.2)); }
+        if (p > 0.4) { // the edges of the screen burn
+          const v = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.75);
+          v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(140,0,0,${0.25 * p * (0.7 + 0.3 * Math.sin(now * 0.006))})`);
+          ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+        }
+      }
+      function drawFx(now, dt, held, stage) {
+        rings = rings.filter((r) => now - r.born < 900);
+        rings.forEach((r) => {
+          const t = (now - r.born) / 900;
+          ctx.strokeStyle = hsl(r.c, hueShift, (1 - t) * 0.8); ctx.lineWidth = 1 + 5 * (1 - t);
+          ctx.beginPath(); ctx.arc(r.x, r.y, r.max * (1 - Math.pow(1 - t, 3)), 0, TAU); ctx.stroke();
+        });
+        parts = parts.filter((p) => now - p.born < p.life);
+        ctx.globalCompositeOperation = 'lighter';
+        parts.forEach((p) => {
+          p.x += p.vx * dt / 16; p.y += p.vy * dt / 16; p.vx *= 0.985; p.vy *= 0.985;
+          ctx.globalAlpha = 1 - (now - p.born) / p.life; ctx.fillStyle = p.c;
+          ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
+        });
+        ctx.globalAlpha = 1;
+        if (holding) { // charge ring around the finger: shows how close the next stage is
+          const frac = stage < 3 ? (held - STAGES[stage]) / (STAGES[stage + 1] - STAGES[stage]) : 1;
+          ctx.strokeStyle = colorOf(stage, 0.9); ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(ptr.x, ptr.y, 24, -Math.PI / 2, -Math.PI / 2 + frac * TAU); ctx.stroke();
+          for (let k = 0; k < stage; k++) { ctx.fillStyle = colorOf(k, 1); ctx.beginPath(); ctx.arc(ptr.x - 8 + k * 8, ptr.y + 34, 2.2, 0, TAU); ctx.fill(); }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      function drawGlitch(now, stage) {
+        if (reduceMotion || theme.special !== 'glitch') return;
+        const strength = now < glitchUntil ? 1 : holding ? stage * 0.25 : 0;
+        if (!strength || Math.random() > strength) return;
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const count = 1 + Math.floor(Math.random() * 4 * strength);
+        for (let k = 0; k < count; k++) {
+          const h = Math.floor(rand(4, 40) * DPR), y = Math.floor(rand(0, canvas.height - h)), dx = Math.floor(rand(-50, 50) * DPR);
+          ctx.drawImage(canvas, 0, y, canvas.width, h, dx, y, canvas.width, h);
+        }
+        ctx.restore();
+      }
+      function updateHud(now, stage) {
+        if (now - lastHud < 120) return;
+        lastHud = now;
+        const roman = ['', 'I', 'II', 'III'];
+        const status = holding
+          ? `INFECTED ${infectedCount}/${N}${stage ? ' · STAGE ' + roman[stage] : ''}`
+          : 'hold to infect · drag to spin · tap to morph · double-tap for next mode';
+        const key = theme.name + shape.name + status;
+        if (key === hudKey) return;
+        hudKey = key;
+        const l1 = document.createElement('div');
+        l1.textContent = `>>> SPHERE // ${theme.name} // ${shape.name.toUpperCase()}`;
+        const l2 = document.createElement('div');
+        l2.className = 'hint'; l2.textContent = status;
+        hud.replaceChildren(l1, l2);
+      }
+
+      let prev = performance.now();
+      function frame(now) {
+        const dt = Math.min(50, now - prev); prev = now;
+        const held = holding ? now - holdStart : 0, stage = stageOf(held);
+        update(now, dt, held, stage);
+        // fade the previous frame instead of clearing it: motion trails
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = `rgba(0,0,0,${reduceMotion ? 1 : theme.fade})`;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.save();
+        if (shake > 0.3) ctx.translate(rand(-shake, shake), rand(-shake, shake));
+        drawAmbient(now, dt);
+        if (theme.mesh) drawMesh();
+        drawLinks(now, stage);
+        if (theme.special === 'summon') drawCircle(now);
+        drawNodes(now);
+        if (theme.special === 'blackhole') drawBlackHole();
+        drawFx(now, dt, held, stage);
+        ctx.restore();
+        if (flash > 0.01) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,255,255,${flash})`; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; }
+        drawGlitch(now, stage);
+        updateHud(now, stage);
+        requestAnimationFrame(frame);
+      }
+      resize();
+      requestAnimationFrame(frame);
     })();
-    
+
     /***** CYBERPUNK NAME: TWITCH ANIMATION ON CLICK *****/
     (function(){
       const nameEl = document.querySelector('.cyber-name');
