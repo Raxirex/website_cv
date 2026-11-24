@@ -99,6 +99,7 @@
       ptrVel: { x: 0, y: 0 }, ptrInside: false, unlocked: false
     };
     global.SPHERE.state = S; // handy in the console
+    S.container = container;
     try { S.unlocked = global.localStorage.getItem('sphere.unlocked') === '1'; } catch (err) { S.unlocked = false; }
     let unlockPresses = 0, lastLongPress = 0;
 
@@ -132,6 +133,7 @@
       ctx.setTransform(S.DPR, 0, 0, S.DPR, 0, 0);
       S.cx = S.W / 2; S.cy = S.H / 2;
       if (S.mode && S.mode.resize) S.mode.resize(S);
+      if (global.SPHERE.layer3d) global.SPHERE.layer3d.resize(S);
     }
 
     /* ---- nodes, shapes, modes ---- */
@@ -158,6 +160,7 @@
     function setMode(i) {
       const now = S.now;
       if (S.mode && S.mode.exit) S.mode.exit(S);
+      const prevMode = S.mode;
       modeIdx = ((i % modes.length) + modes.length) % modes.length;
       const m = modes[modeIdx];
       if (!m.glyphList) m.glyphList = typeof m.glyphs === 'string' && m.glyphs !== 'random' ? Array.from(m.glyphs) : [];
@@ -168,6 +171,7 @@
       loadShape();
       S.nodes.forEach((n) => { n.g = S.glyph(); n.scr = now + rand(200, 800); n.data = {}; });
       if (m.init) m.init(S);
+      if (global.SPHERE.layer3d) global.SPHERE.layer3d.onMode(S, prevMode, m);
       burst(S.cx, S.cy, 1);
       applyPageBg();
       hudKey = '';
@@ -368,6 +372,7 @@
         const y2 = y * cX - z * sX, z2 = y * sX + z * cX;
         const x3 = x * cY + z2 * sY, z3 = -x * sY + z2 * cY;
         const sc = 2 / (2 - clamp(z3, -1.5, 1.5));
+        n.rx = x3; n.ry = y2; n.rz = z3; // rotated unit coordinates, for 3D modes
         n.sx = S.cx + x3 * S.R * sc; n.sy = S.cy + y2 * S.R * sc; n.sc = sc; n.z = z3; n.shrink = 1;
         if (S.ptrInside && !S.holding) { // letters shy away from a hovering pointer
           const dx = n.sx - S.ptr.x, dy = n.sy - S.ptr.y, d = Math.hypot(dx, dy) + 0.01;
@@ -514,7 +519,8 @@
       S.held = S.holding ? now - S.holdStart : 0; S.stage = stageOf(S.held);
       update(now, dt);
       const m = S.mode;
-      if (m.opaque || reduceMotion) ctx.clearRect(0, 0, S.W, S.H);
+      if (global.SPHERE.layer3d) global.SPHERE.layer3d.render(S, now, dt);
+      if (m.opaque || m.three || reduceMotion) ctx.clearRect(0, 0, S.W, S.H);
       else { // fade the previous frame instead of clearing it: motion trails
         ctx.globalCompositeOperation = 'destination-out';
         ctx.fillStyle = `rgba(0,0,0,${m.fade || 0.5})`;

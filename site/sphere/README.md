@@ -67,3 +67,24 @@ Keep per-mode state in `S.data`, which is reset on every mode change.
 - Per frame at stage III, aim for under 6 ms of your own work on a laptop. Prefer `fillRect` and paths over `shadowBlur`. Cache gradients and offscreen canvases.
 - The canvas is transparent (unless `opaque`). Don't paint over the whole page unless the mode is meant to.
 - No external requests, images or fonts. Draw everything procedurally.
+
+## 3D modes (realism)
+For realistic scenes, add `three: { init(S, X), update(S, X, now, dt), exit(S, X) }` to a mode. The layer (`sphere-3d.js`) renders a three.js r128 scene behind the 2D canvas. Everything is client-side; the add-ons are vendored in `sphere/vendor/three/` and are already loaded as `THREE.*`: EffectComposer, RenderPass, ShaderPass, UnrealBloomPass, FXAAShader, Sky (Preetham sky), Water, ImprovedNoise, RoundedBoxGeometry and RoomEnvironment.
+
+`X` provides:
+- `THREE`, `renderer`, `scene`, `camera` (PerspectiveCamera, fov 45). These are fresh for each mode and disposed when the mode is left.
+- **Renderer settings:** antialias, ACES filmic tone mapping, sRGB output, `physicallyCorrectLights` (use real units: point/spot light intensity in candela, roughly 10–1000) and soft PCF shadows (`renderer.shadowMap.enabled` is already true). Set `castShadow` and `receiveShadow`, and size the shadow cameras tightly.
+- `X.setBloom(strength, radius, threshold)`: post-processing bloom with FXAA, tone mapping in the output pass.
+- `X.setExposure(e)`.
+- `X.studioEnvironment()`: PMREM image-based lighting, for metal and glass.
+- `X.canvasTexture(w, h, (ctx, w, h) => draw)`: procedural textures.
+- `X.noise.noise(x, y, z)`: Perlin noise.
+- `X.toScreen(vec3)` and `X.fromScreen(x, y, planeZ)`: map between the scene and pointer pixels.
+- `X.maxPixelRatio`: 1.5 by default. Lower it for heavy scenes.
+
+How to use it:
+- Build the models procedurally: LatheGeometry, ExtrudeGeometry, InstancedMesh, BufferGeometry and displacement, with MeshStandardMaterial or MeshPhysicalMaterial.
+- Use instancing for anything repeated (buildings, windows, stars).
+- The letters (`S.active`, with rotated unit coordinates `n.rx`, `n.ry`, `n.rz`) can stay as the 2D overlay, or the mode can draw them in 3D and return `true` from `drawNode` to hide the 2D ones.
+- When `three` is set, the 2D canvas is cleared each frame, so there are no trails; draw only overlays there.
+- Budget: aim for under 8 ms of GPU work at 1080p on a laptop. Keep draw calls under about 300 and shadow maps at 2048 or below.

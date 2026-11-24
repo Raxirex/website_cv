@@ -74,6 +74,7 @@ See the LICENSE file for the full license text.
       left: 0;
       width: 100%;
       height: 100vh;
+      height: 100svh; /* phones: the visible height, without the browser bars */
       min-height: 560px;
       z-index: 10;
       overflow: hidden;
@@ -121,7 +122,8 @@ See the LICENSE file for the full license text.
       position: relative;
       z-index: 1;
       padding: 40px 20px;
-      margin-top: 800px; /* Adjust when needed */
+      margin-top: calc(100vh + 80px);
+      margin-top: calc(max(100svh, 560px) + 80px); /* starts just below the sphere's screen */
       max-width: 800px;
       margin-left: auto;
       margin-right: auto;
@@ -152,6 +154,15 @@ See the LICENSE file for the full license text.
     .twitch { animation: twitch 1s; }
 
     /* ----------------------- Projects ----------------------- */
+    .project.project-soon { border-style: dashed; color: rgba(255, 255, 255, 0.55); cursor: default; }
+    .project.project-soon::before { content: "~ "; color: rgba(255, 255, 255, 0.35); }
+    .project.project-soon .project-index { color: rgba(255, 0, 255, 0.5); }
+    @media (max-width: 600px) {
+      #cv-content { padding: 32px 16px; }
+      #cv-content h1 { font-size: 1.45em; }
+      .project-name { font-size: 16px; }
+      #header { font-size: 18px; }
+    }
     #cv-content .project-list li { margin-bottom: 14px; }
     .project {
       display: block;
@@ -234,17 +245,30 @@ See the LICENSE file for the full license text.
             <span class="project-desc">Sections, bending, shear, torsion, elastic line and buckling</span>
           </a>
         </li>
+        <li>
+          <!-- Placeholder for project 05: replace this div with an <a class="project" href="..."> like the ones above -->
+          <div class="project project-soon" aria-disabled="true">
+            <span class="project-index">[05]</span>
+            <span class="project-name">Coming soon</span>
+            <span class="project-desc">Something new is being built here</span>
+          </div>
+        </li>
       </ul>
     </section>
   </div>
 
   <!-- The Sphere: engine, then packs (each adds shapes, web styles and modes), then start -->
   <script src="sphere/sphere-core.js"></script>
+  <script src="sphere/sphere-3d.js"></script>
   <script src="sphere/pack-base.js"></script>
   <script src="sphere/pack-shapes.js"></script>
   <script src="sphere/pack-links.js"></script>
   <script src="sphere/pack-cosmos.js"></script>
   <script src="sphere/pack-modes.js"></script>
+  <script src="sphere/pack-fantasy.js"></script>
+  <script src="sphere/pack-punk.js"></script>
+  <script src="sphere/pack-heroes.js"></script>
+  <script src="sphere/pack-world.js"></script>
   <script src="sphere/oeis.js"></script>
   <script>SPHERE.start(document.getElementById('sphere-container'));</script>
   <script>
@@ -331,9 +355,10 @@ See the LICENSE file for the full license text.
       
       startTime = Date.now();
       function animateBackground(){
+        requestAnimationFrame(animateBackground);
+        if (document.body.classList.contains('sphere-unlocked')) return; // hidden behind the sphere's own scenes
         material.uniforms.time.value = (Date.now() - startTime) * 0.001;
         renderer.render(scene, camera);
-        requestAnimationFrame(animateBackground);
       }
       animateBackground();
       
