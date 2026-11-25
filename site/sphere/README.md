@@ -88,3 +88,14 @@ How to use it:
 - The letters (`S.active`, with rotated unit coordinates `n.rx`, `n.ry`, `n.rz`) can stay as the 2D overlay, or the mode can draw them in 3D and return `true` from `drawNode` to hide the 2D ones.
 - When `three` is set, the 2D canvas is cleared each frame, so there are no trails; draw only overlays there.
 - Budget: aim for under 8 ms of GPU work at 1080p on a laptop. Keep draw calls under about 300 and shadow maps at 2048 or below.
+
+## 2D/3D switch
+2D is the default. The page loads only the 2D packs: `pack-base.js`, `pack-shapes.js`, `pack-links.js`, `pack-cosmos.js`, `pack-modes.js`, `pack-fantasy.js` and `pack-punk.js`.
+
+The **2D/3D** button in the HUD (or the key **D**) loads the files listed in `SPHERE.packs3d` once (the `*-3d.js` packs) and remembers the choice per browser. While those packs load, `SPHERE.loading3D` is true:
+- Their modes go to `SPHERE.modes3d`. A 3D mode with the same id replaces its 2D twin while 3D is on.
+- 3D modes with no 2D twin (`SPHERE.only3d`) appear only in 3D.
+- Their web styles go to `SPHERE.links3d`, so they never change a 2D mode.
+- Shapes already registered are not overwritten.
+
+Leaving a 3D mode frees every GPU texture and render target it created, including ones kept outside its scene.

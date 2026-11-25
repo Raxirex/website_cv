@@ -25,10 +25,20 @@
   function randomGlyph() { const r = pick(GLYPH_RANGES); return String.fromCodePoint(Math.floor(rand(r[0], r[1] + 1))); }
 
   /* ---------------- Registries ---------------- */
-  const shapes = {}, links = {}, modes = [];
-  function addShape(key, def) { shapes[key] = def; }
-  function addLink(key, draw) { links[key] = draw; }
-  function addMode(def) { modes.push(def); }
+  // 2D packs load with the page. 3D packs load only when the 2D/3D switch is turned on; while they load,
+  // SPHERE.loading3D is true and their web styles and modes go into separate registries, so a 3D pack can
+  // never change how a 2D mode looks. A 3D mode with the same id as a 2D mode replaces it while 3D is on.
+  const shapes = {}, links = {}, modes = [], links3d = {}, modes3d = {}, only3d = [];
+  function addShape(key, def) { if (global.SPHERE.loading3D && shapes[key]) return; shapes[key] = def; }
+  function addLink(key, draw) { (global.SPHERE.loading3D ? links3d : links)[key] = draw; }
+  function addMode(def) {
+    if (!global.SPHERE.loading3D) { modes.push(def); return; }
+    def.is3D = true;
+    modes3d[def.id] = def;
+    if (!modes.some((m) => m.id === def.id)) only3d.push(def);
+  }
+  let dim3 = false; // the 2D/3D switch
+  const list = () => (dim3 ? modes.map((m) => modes3d[m.id] || m).concat(only3d) : modes);
 
   // Points come back centred and scaled into the unit ball, with a mesh (pairs of point indexes) for wireframes.
   const shapeCache = {};
@@ -80,6 +90,7 @@
       '<button type="button" data-a="mode-1" aria-label="Previous mode">&#9664;</button><span>mode</span><button type="button" data-a="mode1" aria-label="Next mode">&#9654;</button>' +
       '<button type="button" data-a="shape-1" aria-label="Previous shape">&#9664;</button><span>shape</span><button type="button" data-a="shape1" aria-label="Next shape">&#9654;</button>' +
       '<button type="button" data-a="count-1" aria-label="Fewer letters">&minus;</button><span>letters</span><button type="button" data-a="count1" aria-label="More letters">+</button>' +
+      '<button type="button" data-a="dim" aria-label="Switch between 2D and 3D">2D</button>' +
       '<button type="button" data-a="lock" aria-label="Lock the sphere again">lock</button>' +
       '</div>';
     container.appendChild(hud);
@@ -161,8 +172,9 @@
       const now = S.now;
       if (S.mode && S.mode.exit) S.mode.exit(S);
       const prevMode = S.mode;
-      modeIdx = ((i % modes.length) + modes.length) % modes.length;
-      const m = modes[modeIdx];
+      const L = list();
+      modeIdx = ((i % L.length) + L.length) % L.length;
+      const m = L[modeIdx];
       if (!m.glyphList) m.glyphList = typeof m.glyphs === 'string' && m.glyphs !== 'random' ? Array.from(m.glyphs) : [];
       S.mode = m; S.data = {}; S.a4Speed = 0.0006; S.spinScale = 1;
       shapeKeys = (m.shapes || ['sphere']).filter((k) => shapes[k]);
@@ -195,13 +207,43 @@
         [120, 260, 420, 640].forEach((r, i) => setTimeout(() => S.ring(S.cx, S.cy, r * 2, S.mode.palette[i % S.mode.palette.length], 1200), i * 120));
         for (let k = 0; k < 160; k++) { const a = rand(0, TAU), v = rand(2, 12); S.spawn(S.cx, S.cy, Math.cos(a) * v, Math.sin(a) * v, hsl([rand(0, 360), 100, 70], 0, 1), rand(800, 2200), rand(1.5, 3.5)); }
         S.nodes.forEach((n) => (n.scr = S.now + rand(300, 1500)));
-        setMode(1 % modes.length);
+        setMode(1 % list().length);
       } else {
         setMode(0);
       }
       global.dispatchEvent(new CustomEvent(on ? 'sphere:unlock' : 'sphere:lock'));
     }
     S.setUnlocked = setUnlocked;
+
+    // 2D/3D switch. 2D is the default; the 3D packs are fetched the first time 3D is switched on.
+    const dimBtn = hud.querySelector('button[data-a="dim"]');
+    let loading3d = null;
+    function load3dPacks() {
+      if (loading3d) return loading3d;
+      const base = (global.SITE_ASSET_BASE || '') + 'sphere/';
+      const files = global.SPHERE.packs3d || [];
+      loading3d = files.reduce((p, f) => p.then(() => new Promise((res) => {
+        const s = document.createElement('script');
+        s.src = base + f;
+        s.onload = s.onerror = res;
+        global.SPHERE.loading3D = true;
+        document.head.appendChild(s);
+      })), Promise.resolve()).then(() => { global.SPHERE.loading3D = false; });
+      return loading3d;
+    }
+    function setDim(on) {
+      try { global.localStorage.setItem('sphere.dim', on ? '3d' : '2d'); } catch (err) { /* private mode */ }
+      const keepId = S.mode && S.mode.id;
+      const apply = () => {
+        dim3 = on;
+        dimBtn.textContent = on ? '3D' : '2D';
+        const L = list(), i = L.findIndex((m) => m.id === keepId);
+        setMode(i >= 0 ? i : modeIdx);
+      };
+      if (on) { dimBtn.textContent = '…'; load3dPacks().then(apply); } else apply();
+    }
+    S.setDim = setDim;
+    S.is3D = () => dim3;
     function burst(x, y, size) {
       S.ring(x, y, 260 * size, S.mode.palette[0]);
       S.flash(0.3 * size); S.shake(8 * size);
@@ -292,6 +334,7 @@
       if (!S.unlocked) return;
       lastInteract = S.now;
       if (a === 'lock') { setUnlocked(false); return; }
+      if (a === 'dim') { setDim(!dim3); return; }
       if (a === 'mode1') setMode(modeIdx + 1);
       if (a === 'mode-1') setMode(modeIdx - 1);
       if (a === 'shape1') S.nextShape(1);
@@ -309,6 +352,7 @@
       if (k === 'n' || k === 'N') act(e.shiftKey ? 'shape-1' : 'shape1');
       if (k === '+' || k === '=') act('count1');
       if (k === '-' || k === '_') act('count-1');
+      if (k === 'd' || k === 'D') act('dim');
     });
     global.addEventListener('resize', resize);
 
@@ -401,7 +445,7 @@
       S.links = S.links.filter((l) => !l.dying || now - l.dying < 700);
       const m = S.mode;
       const style = m.links ? m.links[Math.min(S.stage, m.links.length - 1)] : m.link;
-      const draw = links[style] || links.line;
+      const draw = (m.is3D && links3d[style]) || links[style] || links.line;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       for (const l of S.links) {
         const A = l.A, B = l.B;
@@ -496,7 +540,7 @@
         ? `INFECTED ${S.infected}/${S.active.length}${S.stage ? ' · STAGE ' + roman[S.stage] : ''}`
         : 'hold to infect · drag to spin · tap to morph · double-tap: next mode · keys M N + −';
       const extra = S.mode.hud ? S.mode.hud(S) || '' : '';
-      const l1 = `>>> SPHERE // ${S.mode.name} (${modeIdx + 1}/${modes.length}) // ${S.shape.name.toUpperCase()} · ${S.active.length}`;
+      const l1 = `>>> SPHERE // ${S.mode.name} (${modeIdx + 1}/${list().length}) ${dim3 ? '3D' : '2D'} // ${S.shape.name.toUpperCase()} · ${S.active.length}`;
       const key = l1 + status + extra;
       if (key === hudKey) return;
       hudKey = key;
@@ -547,11 +591,12 @@
     resize();
     hud.hidden = !S.unlocked;
     document.body.classList.toggle('sphere-unlocked', S.unlocked);
-    setMode(S.unlocked ? 1 % modes.length : 0);
+    setMode(S.unlocked ? 1 % list().length : 0);
     if (S.unlocked) global.dispatchEvent(new CustomEvent('sphere:unlock'));
+    try { if (S.unlocked && global.localStorage.getItem('sphere.dim') === '3d') setDim(true); } catch (err) { /* private mode */ }
     S.nodes.forEach((n) => { n.p = n.p.map((v) => v * 0.02); }); // start collapsed: the sphere unfolds on load
     requestAnimationFrame(frame);
   }
 
-  global.SPHERE = { addShape, addLink, addMode, start, shapes, links, modes, buildShape, util: { TAU, GOLDEN, rand, pick, clamp, hsl, randomGlyph } };
+  global.SPHERE = { addShape, addLink, addMode, start, shapes, links, modes, links3d, modes3d, only3d, buildShape, util: { TAU, GOLDEN, rand, pick, clamp, hsl, randomGlyph } };
 })(window);

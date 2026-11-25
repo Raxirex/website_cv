@@ -44,6 +44,20 @@
 
   let renderer = null, glCanvas = null, X = null, active = null, pending = 0, failed = false;
 
+  // Leak guard: every texture or render target uploaded to the GPU while a 3D mode runs is remembered
+  // (three.js registers a 'dispose' listener on first upload) and freed when the mode is left, including
+  // ones a mode keeps outside its scene. Freed objects re-upload automatically if they are used again.
+  const tracked = new Set();
+  let tracking = false;
+  const ED = THREE.EventDispatcher && THREE.EventDispatcher.prototype;
+  if (ED && ED.addEventListener) {
+    const add = ED.addEventListener;
+    ED.addEventListener = function (type, fn) {
+      if (tracking && type === 'dispose' && (this.isTexture || this.isWebGLRenderTarget)) tracked.add(this);
+      return add.call(this, type, fn);
+    };
+  }
+
   function ensureRenderer(S) {
     if (renderer || failed) return renderer;
     try {
@@ -65,6 +79,7 @@
 
   function disposeScene(scene) {
     scene.traverse((o) => {
+      if (o.isLight && o.shadow && o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; } // free shadow maps
       if (o.geometry) o.geometry.dispose();
       const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
       mats.forEach((m) => { Object.keys(m).forEach((k) => { if (m[k] && m[k].isTexture) m[k].dispose(); }); m.dispose(); });
@@ -82,6 +97,7 @@
       X.camera.aspect = S.W / Math.max(1, S.H); X.camera.updateProjectionMatrix();
       if (X.composer) {
         X.composer.setPixelRatio(pr); X.composer.setSize(S.W, S.H);
+        if (X.bloomPass) X.bloomPass.setSize(Math.max(64, S.W * pr / 2), Math.max(64, S.H * pr / 2)); // keep bloom at half resolution
         if (X.fxaa) X.fxaa.material.uniforms.resolution.value.set(1 / (S.W * pr), 1 / (S.H * pr));
       }
     }
@@ -93,7 +109,8 @@
     const rt = new THREE.WebGLRenderTarget(S.W * pr, S.H * pr, { type: THREE.HalfFloatType, format: THREE.RGBAFormat });
     const composer = new THREE.EffectComposer(renderer, rt);
     composer.addPass(new THREE.RenderPass(X.scene, X.camera));
-    X.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(S.W, S.H), X.bloom.strength, X.bloom.radius, X.bloom.threshold);
+    // Bloom is a blur, so half resolution looks the same and costs about a quarter of the GPU time.
+    X.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(Math.max(64, S.W / 2), Math.max(64, S.H / 2)), X.bloom.strength, X.bloom.radius, X.bloom.threshold);
     composer.addPass(X.bloomPass);
     const out = new THREE.ShaderPass(OutputShader);
     out.uniforms.exposure.value = renderer.toneMappingExposure;
@@ -123,8 +140,10 @@
       studioEnvironment() {
         if (!THREE.RoomEnvironment) return null;
         const pm = new THREE.PMREMGenerator(renderer);
-        const tex = pm.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+        const room = new THREE.RoomEnvironment();
+        const tex = pm.fromScene(room, 0.04).texture;
         pm.dispose();
+        disposeScene(room); // the studio room is only needed to bake the environment
         X.scene.environment = tex;
         return tex;
       },
@@ -149,6 +168,7 @@
     renderer.toneMappingExposure = 1;
     renderer.setClearColor(0x000000, 0);
     size(S);
+    tracking = true;
     try { mode.three.init(S, X); } catch (err) { console.error('[sphere-3d] init', mode.id, err); }
     size(S);
     glCanvas.style.display = 'block';
@@ -161,6 +181,9 @@
     disposeScene(X.scene);
     if (X.composer) { X.composer.renderTarget1.dispose(); X.composer.renderTarget2.dispose(); }
     if (X.bloomPass) X.bloomPass.dispose();
+    tracking = false;
+    tracked.forEach((t) => { try { t.dispose(); } catch (err) { /* already gone */ } });
+    tracked.clear();
     X = null; active = null;
     if (glCanvas) glCanvas.style.display = 'none';
     S.three = null;
