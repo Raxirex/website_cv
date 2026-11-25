@@ -127,17 +127,33 @@ function egecelikel_site_send( $relative ) {
  */
 function egecelikel_site_fix_asset_urls( $html, $rel_dir ) {
 	$asset_base = plugins_url( 'site/' . ( '' === $rel_dir ? '' : $rel_dir . '/' ), __FILE__ );
+	$asset_dir  = EGECELIKEL_SITE_DIR . ( '' === $rel_dir ? '' : '/' . $rel_dir );
 
 	// src/href on script, link, img, source, audio, video, unless absolute, root-relative, a fragment or a scheme (data:, https:...).
+	// The host's CDN caches these files for a year, so each URL carries ?v=<the file's modification time>:
+	// a changed file gets a new URL and browsers fetch it again.
 	$html = preg_replace_callback(
 		'#(<(?:script|link|img|source|audio|video)\b[^>]*?\s(?:src|href)=)(["\'])(?![\#/]|[a-zA-Z][a-zA-Z0-9+.\-]*:)([^"\']+)\2#i',
-		function ( $m ) use ( $asset_base ) {
-			return $m[1] . $m[2] . esc_url( $asset_base . $m[3] ) . $m[2];
+		function ( $m ) use ( $asset_base, $asset_dir ) {
+			$url  = $asset_base . $m[3];
+			$path = $asset_dir . '/' . preg_replace( '/[?#].*$/', '', $m[3] );
+			if ( false === strpos( $m[3], '?' ) && false === strpos( $m[3], '..' ) && is_file( $path ) ) {
+				$url .= '?v=' . filemtime( $path );
+			}
+			return $m[1] . $m[2] . esc_url( $url ) . $m[2];
 		},
 		$html
 	);
 
-	$setup = '<script>window.SITE_ASSET_BASE = ' . wp_json_encode( $asset_base ) . ';</script>';
+	// One version for files that scripts load at run time (3D packs, add-ons, data): the newest file time.
+	$version = 0;
+	foreach ( array( '*.js', '*.json', 'sphere/*.js', 'sphere/*.json', 'sphere/vendor/three/*.js' ) as $pattern ) {
+		foreach ( glob( $asset_dir . '/' . $pattern ) ?: array() as $file ) {
+			$version = max( $version, (int) filemtime( $file ) );
+		}
+	}
+
+	$setup = '<script>window.SITE_ASSET_BASE = ' . wp_json_encode( $asset_base ) . '; window.SITE_ASSET_VERSION = ' . wp_json_encode( (string) $version ) . ';</script>';
 	$count = 0;
 	$html  = preg_replace( '#<head\b[^>]*>#i', '$0' . $setup, $html, 1, $count );
 

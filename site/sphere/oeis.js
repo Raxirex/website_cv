@@ -9,7 +9,7 @@
   if (!bar) return;
   const pickEl = document.getElementById('oeis-pick'), randomEl = document.getElementById('oeis-random');
   const nameEl = document.getElementById('oeis-name'), track = document.getElementById('oeis-track');
-  const LIBRARY = (window.SITE_ASSET_BASE || '') + 'sphere/oeis-library.json';
+  const LIBRARY = (window.SITE_ASSET_BASE || '') + 'sphere/oeis-library.json' + (window.SITE_ASSET_VERSION ? '?v=' + window.SITE_ASSET_VERSION : '');
   let library = null; // [{ id, name, terms, famous }]
 
   const FAMOUS = [

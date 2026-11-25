@@ -224,7 +224,7 @@
       const files = global.SPHERE.packs3d || [];
       loading3d = files.reduce((p, f) => p.then(() => new Promise((res) => {
         const s = document.createElement('script');
-        s.src = base + f;
+        s.src = base + f + (global.SITE_ASSET_VERSION ? '?v=' + global.SITE_ASSET_VERSION : ''); // CDN cache-busting
         s.onload = s.onerror = res;
         global.SPHERE.loading3D = true;
         document.head.appendChild(s);

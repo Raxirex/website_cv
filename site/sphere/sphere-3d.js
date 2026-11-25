@@ -23,7 +23,7 @@
     const base = (global.SITE_ASSET_BASE || '') + 'sphere/vendor/three/';
     loading = VENDOR.reduce((p, name) => p.then(() => new Promise((res) => {
       const s = document.createElement('script');
-      s.src = base + name + '.js';
+      s.src = base + name + '.js' + (global.SITE_ASSET_VERSION ? '?v=' + global.SITE_ASSET_VERSION : ''); // CDN cache-busting
       s.onload = res; s.onerror = () => { console.warn('[sphere-3d] could not load', name); res(); };
       document.head.appendChild(s);
     })), Promise.resolve());
