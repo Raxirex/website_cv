@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Space of Continuum Mechanisms</title>
+  <meta name="description" content="The Space of Continuum Mechanisms: the general theorem for static conservative mechanisms, the paper on effective joints, and the complete record. By Ege Çelikel.">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: black;
+      color: white;
+      font-family: monospace;
+      padding: 40px 16px;
+      box-sizing: border-box;
+    }
+    main { max-width: 760px; margin: 0 auto; }
+    a { color: #7fdbff; }
+    .crumb { color: #c8644b; letter-spacing: 1px; font-size: 13px; }
+    h1 { font-size: 30px; line-height: 1.2; margin: 14px 0 10px; font-weight: normal; letter-spacing: 1px; }
+    .sub { color: #ccc; font-size: 16px; line-height: 1.5; margin: 0 0 8px; }
+    .author { color: #fff; margin: 0 0 28px; }
+    .box { border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.04); padding: 16px 18px; line-height: 1.6; color: #ddd; }
+    .box strong { color: #fff; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 12px; }
+    .btn { display: inline-block; padding: 12px 18px; border: 1px solid #00ffff; color: #fff; text-decoration: none; }
+    .btn::before { content: "> "; color: #00ffff; }
+    .btn:hover, .btn:focus-visible { background: rgba(0, 255, 255, 0.12); outline: none; }
+    .muted { color: #888; font-size: 13px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">&larr; egecelikel.com</a></p>
+    <div class="crumb">Collected volume / third edition / 26 November 2026</div>
+    <h1>The Space of Continuum Mechanisms</h1>
+    <p class="sub">The general theorem for static conservative mechanisms, the finished paper on effective joints, and the complete record</p>
+    <p class="author">Ege Çelikel</p>
+
+    <div class="box">
+      <strong>The result in four lines.</strong> Seen through its ports, a static conservative mechanism is a lower
+      semicontinuous energy on the port space. These energies form a compact metric space in which distance is what
+      spring-loaded probes measure. Connection of mechanisms is lower semicontinuous in that space, and continuous for
+      soft partners. Every point of the space is a limit of linkages of bars, pins and one spring. These statements are
+      checked by machine in Lean 4 with Mathlib. That the same holds for bodies cut from one elastic material is conjectured.
+    </div>
+
+    <div class="actions">
+      <a class="btn" id="read" href="Space_of_Continuum_Mechanisms_Collected_Volume_3rd_Edition.pdf" target="_blank" rel="noopener">Read the PDF</a>
+      <a class="btn" id="download" href="Space_of_Continuum_Mechanisms_Collected_Volume_3rd_Edition.pdf" download>Download</a>
+    </div>
+    <p class="muted">310 pages · 12.5 MB · source files and outputs are embedded in the PDF as attachments.</p>
+  </main>
+  <script>
+    // The host serves PDFs straight from the plugin folder, so point the links there (SITE_ASSET_BASE is set by the site).
+    (function () {
+      var base = window.SITE_ASSET_BASE || '';
+      ['read', 'download'].forEach(function (id) {
+        var a = document.getElementById(id);
+        a.href = base + a.getAttribute('href');
+      });
+    })();
+  </script>
+</body>
+</html>
